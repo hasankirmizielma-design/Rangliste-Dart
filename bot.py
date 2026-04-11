@@ -19,7 +19,7 @@ scope = [
 import json
 import os
 
-creds_dict = json.loads(os.getenv("GOOGLE_CREDENTIALS"))
+creds_dict = json.loads(os.getenv("Google_Credentials"))
 creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
 gs_client = gspread.authorize(creds)
 
