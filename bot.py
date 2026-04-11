@@ -4,7 +4,7 @@ import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 
 import os
-TOKEN = os.getenv("MTQ5MjM4NTk5MDIzMTE5NTY0OA.GuXZkr.8B-U6_ff4xtIIPpYEICKi0nxOgPZVE60-vqTT8")
+TOKEN = os.getenv("TOKEN")
 
 intents = discord.Intents.default()
 intents.message_content = True
