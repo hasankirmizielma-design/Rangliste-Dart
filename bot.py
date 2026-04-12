@@ -31,10 +31,6 @@ pattern = r"(.+?) vs (.+?) (\d+):(\d+)"
 async def on_ready():
     print(f"✅ Bot ist online als {client.user}")
 
-import re
-
-pattern = r"(.+?)\s+vs\s+(.+?)\s+(\d+):(\d+)"
-
 @client.event
 async def on_message(message):
     if message.author == client.user:
@@ -43,55 +39,26 @@ async def on_message(message):
     if message.channel.name != "bullseye-rangliste-ergebnisse":
         return
 
-    content = message.content
+    match = re.match(pattern, message.content)
 
-    match = re.search(pattern, content)
+    if match:
+        p1, p2, s1, s2 = match.groups()
 
-    if not match:
-        await message.channel.send("❌ Format: Name vs Name 5:4")
-        return
+        # Mentions erkennen
+        if message.mentions:
+            if len(message.mentions) >= 1:
+                p1 = message.mentions[0].display_name
+            if len(message.mentions) >= 2:
+                p2 = message.mentions[1].display_name
 
-    p1_text, p2_text, s1, s2 = match.groups()
-    s1, s2 = int(s1), int(s2)
+        sheet.append_row([
+            p1.strip(),
+            p2.strip(),
+            int(s1),
+            int(s2)
+        ])
 
-    # 👉 Mentions sauber extrahieren
-    mentions = message.mentions
-
-    if len(mentions) == 2:
-        # Reihenfolge anhand Text prüfen
-        if mentions[0].display_name.lower() in p1_text.lower():
-            p1 = mentions[0].display_name
-            p2 = mentions[1].display_name
-        else:
-            p1 = mentions[1].display_name
-            p2 = mentions[0].display_name
-    else:
-        # fallback: Text verwenden
-        p1 = p1_text.strip()
-        p2 = p2_text.strip()
-
-    # 👉 Debug (optional)
-    print(f"{p1} vs {p2} → {s1}:{s2}")
-
-    # 👉 Google Sheet
-    sheet.append_row([
-        p1,
-        p2,
-        s1,
-        s2
-    ])
-
-    # 👉 Gewinner bestimmen
-    if s1 > s2:
-        winner = p1
-    elif s2 > s1:
-        winner = p2
-    else:
-        winner = "Unentschieden"
-
-    await message.channel.send(
-        f"✅ {p1} {s1}:{s2} {p2} eingetragen\n🏆 Gewinner: {winner}"
-    )
+        await message.channel.send(f"✅ Eingetragen: {p1} {s1}:{s2} {p2}")
 
     else:
         await message.channel.send("❌ Format: Name vs Name 5:4")
