@@ -1,6 +1,7 @@
 import discord
 import re
 import os
+import json
 from collections import defaultdict
 from datetime import date
 
@@ -23,15 +24,22 @@ intents.message_content = True
 client = discord.Client(intents=intents)
 
 # =========================
-# GOOGLE SHEETS SETUP
+# GOOGLE SHEETS SETUP (ENV VERSION)
 # =========================
 scope = [
     "https://spreadsheets.google.com/feeds",
     "https://www.googleapis.com/auth/drive"
 ]
 
-creds = ServiceAccountCredentials.from_json_keyfile_name(
-    "credentials.json",
+creds_json = os.getenv("GOOGLE_CREDENTIALS")
+
+if not creds_json:
+    raise Exception("❌ GOOGLE_CREDENTIALS ist nicht gesetzt!")
+
+creds_dict = json.loads(creds_json)
+
+creds = ServiceAccountCredentials.from_json_keyfile_dict(
+    creds_dict,
     scope
 )
 
@@ -59,7 +67,7 @@ pattern = re.compile(
 # HELPER
 # =========================
 def reset_daily_counter_if_needed():
-    global last_reset, match_count
+    global match_count, last_reset
 
     if date.today() != last_reset:
         match_count = defaultdict(int)
@@ -79,7 +87,7 @@ def remaining(player: str):
 # =========================
 @client.event
 async def on_ready():
-    print(f"✅ Bot ist online als {client.user}")
+    print(f"✅ Bot online als {client.user}")
 
 
 @client.event
@@ -93,12 +101,9 @@ async def on_message(message):
     reset_daily_counter_if_needed()
 
     content = message.content
-
-    # DEBUG (falls Fehler wieder auftreten)
-    print("📩 MESSAGE:", content)
+    print("📩 INPUT:", content)
 
     match = pattern.search(content)
-
     print("🔎 MATCH:", bool(match))
 
     if not match:
@@ -107,9 +112,7 @@ async def on_message(message):
 
     p1_raw, p2_raw, s1, s2 = match.groups()
 
-    # =========================
     # Mentions haben Priorität
-    # =========================
     if len(message.mentions) >= 2:
         p1 = message.mentions[0].display_name
         p2 = message.mentions[1].display_name
@@ -135,7 +138,7 @@ async def on_message(message):
         return
 
     # =========================
-    # WINNER LOGIC
+    # WINNER
     # =========================
     if s1 > s2:
         winner = p1
@@ -145,7 +148,7 @@ async def on_message(message):
         winner = "Unentschieden"
 
     # =========================
-    # GOOGLE SHEETS EINTRAG
+    # SHEETS WRITE
     # =========================
     try:
         sheet.append_row([
@@ -157,7 +160,7 @@ async def on_message(message):
         ])
     except Exception as e:
         print("❌ SHEETS ERROR:", e)
-        await message.channel.send("❌ Fehler beim Eintragen in Google Sheets!")
+        await message.channel.send("❌ Fehler beim Google Sheets Eintrag!")
         return
 
     # =========================
