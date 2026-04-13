@@ -24,7 +24,7 @@ intents.message_content = True
 client = discord.Client(intents=intents)
 
 # =========================
-# GOOGLE SHEETS SETUP (ENV)
+# GOOGLE SHEETS (ENV)
 # =========================
 scope = [
     "https://spreadsheets.google.com/feeds",
@@ -34,7 +34,7 @@ scope = [
 creds_json = os.getenv("GOOGLE_CREDENTIALS")
 
 if not creds_json:
-    raise Exception("❌ GOOGLE_CREDENTIALS fehlt in Environment Variables!")
+    raise Exception("❌ GOOGLE_CREDENTIALS fehlt!")
 
 creds_dict = json.loads(creds_json)
 
@@ -50,13 +50,14 @@ sheet = gs_client.open_by_key(
 ).worksheet("Ergebnisse")
 
 # =========================
-# MEMORY (Daily Counter)
+# MEMORY
 # =========================
 match_count = defaultdict(int)
 last_reset = date.today()
 
 # =========================
-# PARSER
+# FLEXIBLE PATTERN
+# (egal ob vs / gegen / Groß-Kleinschreibung / extra Text)
 # =========================
 pattern = re.compile(
     r"(.+?)\s*(?:vs|gegen)\s*(.+?)\s*(\d+)\s*:\s*(\d+)",
@@ -66,28 +67,52 @@ pattern = re.compile(
 # =========================
 # HELPERS
 # =========================
-def reset_daily_counter_if_needed():
+def reset_daily():
     global match_count, last_reset
-
     if date.today() != last_reset:
         match_count = defaultdict(int)
         last_reset = date.today()
 
 
-def normalize(name: str):
+def normalize(name):
     return name.strip().lower()
 
 
-def remaining(player: str):
+def remaining(player):
     return MAX_MATCHES_PER_DAY - match_count[normalize(player)]
 
 
 # =========================
-# BOT EVENTS
+# SMART NAME RESOLVER
+# =========================
+def resolve_names(message, raw_text):
+    """
+    - ersetzt Mentions durch Namen
+    - funktioniert auch ohne @
+    - garantiert stabile Reihenfolge aus Text
+    """
+
+    text = raw_text
+
+    # Mentions ersetzen (nur TEXT ersetzen, NICHT Reihenfolge verändern!)
+    for m in message.mentions:
+        text = text.replace(f"<@{m.id}>", m.display_name)
+        text = text.replace(f"<@!{m.id}>", m.display_name)
+
+    match = pattern.search(text)
+
+    if not match:
+        return None
+
+    return match.groups()
+
+
+# =========================
+# BOT
 # =========================
 @client.event
 async def on_ready():
-    print(f"✅ Bot online als {client.user}")
+    print(f"✅ Online als {client.user}")
 
 
 @client.event
@@ -98,97 +123,90 @@ async def on_message(message):
     if message.channel.name != CHANNEL_NAME:
         return
 
-    reset_daily_counter_if_needed()
+    reset_daily()
 
     content = message.content
     print("📩 INPUT:", content)
 
-    match = pattern.search(content)
-    print("🔎 MATCH:", bool(match))
+    result = resolve_names(message, content)
 
-    if not match:
+    if not result:
         await message.channel.send("❌ Format: Spieler A vs Spieler B 3:0")
         return
 
-    p1_raw, p2_raw, s1, s2 = match.groups()
+    p1, p2, s1, s2 = result
 
     s1 = int(s1)
     s2 = int(s2)
 
     # =========================
-    # Mentions override names (optional)
-    # =========================
-    if len(message.mentions) >= 2:
-        p1_raw = message.mentions[0].display_name
-        p2_raw = message.mentions[1].display_name
-
-    # =========================
-    # 🎯 ABSOLUTE SCORE LOGIC (NO MORE SWITCHING)
+    # ABSOLUTE SCORE LOGIC
+    # (KEINE VERTAUSCHUNG MEHR MÖGLICH)
     # =========================
     if s1 > s2:
-        winner_name = p1_raw.strip()
-        loser_name = p2_raw.strip()
-        winner_score = s1
-        loser_score = s2
+        winner = p1.strip()
+        loser = p2.strip()
+        w_score = s1
+        l_score = s2
 
     elif s2 > s1:
-        winner_name = p2_raw.strip()
-        loser_name = p1_raw.strip()
-        winner_score = s2
-        loser_score = s1
+        winner = p2.strip()
+        loser = p1.strip()
+        w_score = s2
+        l_score = s1
 
     else:
-        winner_name = "Unentschieden"
-        loser_name = ""
-        winner_score = s1
-        loser_score = s2
+        winner = "Unentschieden"
+        loser = ""
+        w_score = s1
+        l_score = s2
 
     # =========================
-    # LIMIT CHECK (pro Spieler)
+    # LIMIT CHECK
     # =========================
-    if winner_name != "Unentschieden":
-        if match_count[normalize(winner_name)] >= MAX_MATCHES_PER_DAY:
-            await message.channel.send(f"⚠️ {winner_name} hat heute keine Spiele mehr übrig.")
+    if winner != "Unentschieden":
+        if match_count[normalize(winner)] >= MAX_MATCHES_PER_DAY:
+            await message.channel.send(f"⚠️ {winner} hat heute keine Spiele mehr übrig.")
             return
 
-        if match_count[normalize(loser_name)] >= MAX_MATCHES_PER_DAY:
-            await message.channel.send(f"⚠️ {loser_name} hat heute keine Spiele mehr übrig.")
+        if match_count[normalize(loser)] >= MAX_MATCHES_PER_DAY:
+            await message.channel.send(f"⚠️ {loser} hat heute keine Spiele mehr übrig.")
             return
 
     # =========================
-    # GOOGLE SHEETS WRITE
+    # SHEETS
     # =========================
     try:
         sheet.append_row([
-            winner_name,
-            loser_name,
-            winner_score,
-            loser_score
+            winner,
+            loser,
+            w_score,
+            l_score,
+            p1,
+            p2
         ])
     except Exception as e:
         print("❌ SHEETS ERROR:", e)
-        await message.channel.send("❌ Fehler beim Eintragen in Google Sheets!")
+        await message.channel.send("❌ Fehler beim Speichern!")
         return
 
     # =========================
-    # COUNTER UPDATE
+    # COUNTER
     # =========================
-    if winner_name != "Unentschieden":
-        match_count[normalize(winner_name)] += 1
-        match_count[normalize(loser_name)] += 1
+    if winner != "Unentschieden":
+        match_count[normalize(winner)] += 1
+        match_count[normalize(loser)] += 1
 
     # =========================
     # RESPONSE
     # =========================
-    if winner_name == "Unentschieden":
-        await message.channel.send(
-            f"🤝 Unentschieden {winner_score}:{loser_score}"
-        )
+    if winner == "Unentschieden":
+        await message.channel.send(f"🤝 Unentschieden {w_score}:{l_score}")
     else:
         await message.channel.send(
-            f"✅ Sieger: {winner_name} ({winner_score}:{loser_score})\n"
-            f"🎮 {winner_name} noch {remaining(winner_name)} Spiele\n"
-            f"🎮 {loser_name} noch {remaining(loser_name)} Spiele"
+            f"🏆 Sieger: {winner} ({w_score}:{l_score})\n"
+            f"🎮 {winner} noch {remaining(winner)} Spiele\n"
+            f"🎮 {loser} noch {remaining(loser)} Spiele"
         )
 
 
