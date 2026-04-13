@@ -31,8 +31,10 @@ scope = [
 ]
 
 creds = ServiceAccountCredentials.from_json_keyfile_name(
-    "credentials.json", scope
+    "credentials.json",
+    scope
 )
+
 gs_client = gspread.authorize(creds)
 
 sheet = gs_client.open_by_key(
@@ -40,17 +42,22 @@ sheet = gs_client.open_by_key(
 ).worksheet("Ergebnisse")
 
 # =========================
-# MEMORY (Spieler + Tageslimit)
+# MEMORY (Tageslimit)
 # =========================
 match_count = defaultdict(int)
 last_reset = date.today()
 
 # =========================
-# SAFE PARSER
+# ROBUSTER PARSER
 # =========================
-pattern = re.compile(r"(.+?)\s+vs\s+(.+?)\s+(\d+)\s*:\s*(\d+)", re.IGNORECASE)
+pattern = re.compile(
+    r"(.+?)\s*(?:vs|gegen)\s*(.+?)\s*(\d+)\s*:\s*(\d+)",
+    re.IGNORECASE
+)
 
-
+# =========================
+# HELPER
+# =========================
 def reset_daily_counter_if_needed():
     global last_reset, match_count
 
@@ -59,16 +66,16 @@ def reset_daily_counter_if_needed():
         last_reset = date.today()
 
 
-def normalize_player(name: str):
+def normalize(name: str):
     return name.strip().lower()
 
 
-def remaining_matches(player: str):
-    return MAX_MATCHES_PER_DAY - match_count[normalize_player(player)]
+def remaining(player: str):
+    return MAX_MATCHES_PER_DAY - match_count[normalize(player)]
 
 
 # =========================
-# EVENTS
+# BOT EVENTS
 # =========================
 @client.event
 async def on_ready():
@@ -85,7 +92,14 @@ async def on_message(message):
 
     reset_daily_counter_if_needed()
 
-    match = pattern.match(message.content)
+    content = message.content
+
+    # DEBUG (falls Fehler wieder auftreten)
+    print("📩 MESSAGE:", content)
+
+    match = pattern.search(content)
+
+    print("🔎 MATCH:", bool(match))
 
     if not match:
         await message.channel.send("❌ Format: Spieler A vs Spieler B 3:0")
@@ -94,13 +108,20 @@ async def on_message(message):
     p1_raw, p2_raw, s1, s2 = match.groups()
 
     # =========================
-    # Mentions PRIORITÄT (wenn vorhanden)
+    # Mentions haben Priorität
     # =========================
-    p1 = message.mentions[0].display_name if len(message.mentions) >= 1 else p1_raw
-    p2 = message.mentions[1].display_name if len(message.mentions) >= 2 else p2_raw
+    if len(message.mentions) >= 2:
+        p1 = message.mentions[0].display_name
+        p2 = message.mentions[1].display_name
+    else:
+        p1 = p1_raw
+        p2 = p2_raw
 
-    p1_key = normalize_player(p1)
-    p2_key = normalize_player(p2)
+    s1 = int(s1)
+    s2 = int(s2)
+
+    p1_key = normalize(p1)
+    p2_key = normalize(p2)
 
     # =========================
     # LIMIT CHECK
@@ -114,23 +135,30 @@ async def on_message(message):
         return
 
     # =========================
-    # SCORE LOGIC (kein Verwechseln mehr)
+    # WINNER LOGIC
     # =========================
-    s1, s2 = int(s1), int(s2)
+    if s1 > s2:
+        winner = p1
+    elif s2 > s1:
+        winner = p2
+    else:
+        winner = "Unentschieden"
 
-    # Gewinner bestimmen (nur zur Info möglich)
-    winner = p1 if s1 > s2 else p2 if s2 > s1 else "Unentschieden"
-
     # =========================
-    # SPEICHERN
+    # GOOGLE SHEETS EINTRAG
     # =========================
-    sheet.append_row([
-        p1,
-        p2,
-        s1,
-        s2,
-        winner
-    ])
+    try:
+        sheet.append_row([
+            p1,
+            p2,
+            s1,
+            s2,
+            winner
+        ])
+    except Exception as e:
+        print("❌ SHEETS ERROR:", e)
+        await message.channel.send("❌ Fehler beim Eintragen in Google Sheets!")
+        return
 
     # =========================
     # COUNTER UPDATE
@@ -139,12 +167,12 @@ async def on_message(message):
     match_count[p2_key] += 1
 
     # =========================
-    # REST SPIELE
+    # RESPONSE
     # =========================
     await message.channel.send(
-        f"✅ Gespeichert: {p1} {s1}:{s2} {p2}\n"
-        f"🎮 {p1} noch {remaining_matches(p1)} Spiele\n"
-        f"🎮 {p2} noch {remaining_matches(p2)} Spiele"
+        f"✅ Eingetragen: {p1} {s1}:{s2} {p2}\n"
+        f"🎮 {p1} noch {remaining(p1)} Spiele\n"
+        f"🎮 {p2} noch {remaining(p2)} Spiele"
     )
 
 
