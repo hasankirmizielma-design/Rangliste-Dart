@@ -12,8 +12,8 @@ from oauth2client.service_account import ServiceAccountCredentials
 # CONFIG
 # =========================
 TOKEN = os.getenv("TOKEN")
-LOG_CHANNEL_ID = 1492394175906320605
 CHANNEL_NAME = "bullseye-rangliste-ergebnisse"
+LOG_CHANNEL_ID = 1492394175906320605
 MAX_MATCHES_PER_DAY = 5
 
 # =========================
@@ -24,7 +24,7 @@ intents.message_content = True
 client = discord.Client(intents=intents)
 
 # =========================
-# GOOGLE SHEETS (ENV)
+# GOOGLE SHEETS
 # =========================
 scope = [
     "https://spreadsheets.google.com/feeds",
@@ -32,7 +32,6 @@ scope = [
 ]
 
 creds_json = os.getenv("GOOGLE_CREDENTIALS")
-
 if not creds_json:
     raise Exception("❌ GOOGLE_CREDENTIALS fehlt!")
 
@@ -56,7 +55,7 @@ match_count = defaultdict(int)
 last_reset = date.today()
 
 # =========================
-# REGEX
+# PATTERN
 # =========================
 pattern = re.compile(
     r"(.+?)\s*(?:vs|gegen)\s*(.+?)\s*(\d+)\s*:\s*(\d+)",
@@ -74,11 +73,15 @@ def reset_daily():
 
 
 def normalize(name):
-    return name.strip().lower().replace("\u00A0", "")
+    return name.strip().lower()
 
 
 def remaining(player):
     return MAX_MATCHES_PER_DAY - match_count[normalize(player)]
+
+
+def is_admin(member):
+    return any(role.name == "Admin" for role in member.roles)
 
 
 def resolve_names(message, raw_text):
@@ -89,24 +92,19 @@ def resolve_names(message, raw_text):
         text = text.replace(f"<@!{m.id}>", m.display_name)
 
     match = pattern.search(text)
-
     if not match:
         return None
 
     return match.groups()
 
-
 # =========================
-# BOT READY
+# BOT EVENTS
 # =========================
 @client.event
 async def on_ready():
     print(f"✅ Online als {client.user}")
 
 
-# =========================
-# MESSAGE HANDLER
-# =========================
 @client.event
 async def on_message(message):
     if message.author.bot:
@@ -117,14 +115,51 @@ async def on_message(message):
 
     reset_daily()
 
-    result = resolve_names(message, message.content)
+    content = message.content
+    print("📩 INPUT:", content)
+
+    # =========================
+    # ADMIN COMMAND: !add
+    # =========================
+    if content.startswith("!add"):
+        if not is_admin(message.author):
+            await message.channel.send("⛔ Nur Admins dürfen das.")
+            return
+
+        parts = content.split()
+
+        if message.mentions:
+            player = message.mentions[0].display_name
+        else:
+            player = parts[1] if len(parts) > 1 else None
+
+        if not player:
+            await message.channel.send("❌ Nutzung: !add Spieler +1 oder -1")
+            return
+
+        change = int(parts[2]) if len(parts) > 2 else 1
+
+        match_count[normalize(player)] += change
+
+        if match_count[normalize(player)] < 0:
+            match_count[normalize(player)] = 0
+
+        await message.channel.send(
+            f"🔧 {player}: Änderung {change}\n"
+            f"🎮 Restspiele: {remaining(player)}"
+        )
+        return
+
+    # =========================
+    # MATCH PARSING
+    # =========================
+    result = resolve_names(message, content)
 
     if not result:
         await message.channel.send("❌ Format: Spieler A vs Spieler B 3:0")
         return
 
     p1, p2, s1, s2 = result
-
     s1 = int(s1)
     s2 = int(s2)
 
@@ -148,39 +183,34 @@ async def on_message(message):
     # =========================
     if winner != "Unentschieden":
         if match_count[normalize(winner)] >= MAX_MATCHES_PER_DAY:
-            await message.channel.send(f"⚠️ {winner} hat heute keine Spiele mehr übrig.")
+            await message.channel.send(f"⚠️ {winner} hat keine Spiele mehr übrig.")
             return
 
         if match_count[normalize(loser)] >= MAX_MATCHES_PER_DAY:
-            await message.channel.send(f"⚠️ {loser} hat heute keine Spiele mehr übrig.")
+            await message.channel.send(f"⚠️ {loser} hat keine Spiele mehr übrig.")
             return
 
     # =========================
-    # SHEET WRITE
+    # GOOGLE SHEETS
     # =========================
-    try:
-        sheet.append_row([
-            winner,
-            loser,
-            w_score,
-            l_score,
-            p1,
-            p2
-        ])
-    except Exception as e:
-        print("❌ SHEETS ERROR:", e)
-        await message.channel.send("❌ Fehler beim Speichern!")
-        return
+    sheet.append_row([
+        winner,
+        loser,
+        w_score,
+        l_score,
+        p1,
+        p2
+    ])
 
     # =========================
-    # COUNTER UPDATE
+    # COUNTER
     # =========================
     if winner != "Unentschieden":
         match_count[normalize(winner)] += 1
         match_count[normalize(loser)] += 1
 
     # =========================
-    # MAIN RESPONSE
+    # RESPONSE
     # =========================
     if winner == "Unentschieden":
         await message.channel.send(f"🤝 Unentschieden {w_score}:{l_score}")
@@ -191,22 +221,26 @@ async def on_message(message):
             f"🎮 {loser} noch {remaining(loser)} Spiele"
         )
 
-    # =========================
-    # LOG CHANNEL OUTPUT
-    # =========================
-    try:
-        log_channel = await client.fetch_channel(LOG_CHANNEL_ID)
+        # =========================
+        # WARNING SYSTEM
+        # =========================
+        for player in [winner, loser]:
+            if remaining(player) == 1:
+                await message.channel.send(
+                    f"⚠️ {player} hat nur noch 1 Spiel übrig!"
+                )
 
-        msg = "📊 Offene Spiele:\n"
-        for player in match_count.keys():
-            rest = remaining(player)
-            if rest > 0:
-                msg += f"{player} hat noch {rest} Spiele\n"
+    # =========================
+    # SECOND CHANNEL (ONLY INVOLVED PLAYERS)
+    # =========================
+    log_channel = client.get_channel(LOG_CHANNEL_ID)
+
+    if log_channel:
+        msg = "📊 Match Update:\n"
+        msg += f"- {p1} vs {p2}\n"
+        msg += f"- Ergebnis: {w_score}:{l_score}\n"
 
         await log_channel.send(msg)
-
-    except Exception as e:
-        print("❌ LOG CHANNEL ERROR:", e)
 
 
 client.run(TOKEN)
