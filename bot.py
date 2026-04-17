@@ -12,13 +12,11 @@ from oauth2client.service_account import ServiceAccountCredentials
 # CONFIG
 # =========================
 TOKEN = os.getenv("TOKEN")
-
-CHANNEL_NAME = "bullseye-rangliste-ergebnisse"
 LOG_CHANNEL_ID = 1492394175906320605
-
+CHANNEL_NAME = "bullseye-rangliste-ergebnisse"
 MAX_MATCHES_PER_DAY = 5
 
-# 🔐 ADMIN ROLE IDS
+# 🔐 ADMIN ROLE ID
 ADMIN_ROLE_IDS = [1463106884595880031]
 
 # =========================
@@ -27,7 +25,6 @@ ADMIN_ROLE_IDS = [1463106884595880031]
 intents = discord.Intents.default()
 intents.message_content = True
 intents.members = True
-
 client = discord.Client(intents=intents)
 
 # =========================
@@ -80,7 +77,7 @@ def reset_daily():
 
 
 def normalize(name):
-    return name.strip().lower()
+    return name.strip().lower().replace("\u00A0", "")
 
 
 def remaining(player):
@@ -99,6 +96,7 @@ def resolve_names(message, raw_text):
         text = text.replace(f"<@!{m.id}>", m.display_name)
 
     match = pattern.search(text)
+
     if not match:
         return None
 
@@ -125,10 +123,9 @@ async def on_message(message):
     reset_daily()
 
     content = message.content
-    print("📩 INPUT:", content)
 
     # =========================
-    # !add COMMAND
+    # ADMIN COMMAND !add
     # =========================
     if content.startswith("!add"):
 
@@ -203,14 +200,19 @@ async def on_message(message):
     # =========================
     # GOOGLE SHEETS
     # =========================
-    sheet.append_row([
-        winner,
-        loser,
-        w_score,
-        l_score,
-        p1,
-        p2
-    ])
+    try:
+        sheet.append_row([
+            winner,
+            loser,
+            w_score,
+            l_score,
+            p1,
+            p2
+        ])
+    except Exception as e:
+        print("❌ SHEETS ERROR:", e)
+        await message.channel.send("❌ Fehler beim Speichern!")
+        return
 
     # =========================
     # COUNTER UPDATE
@@ -220,7 +222,7 @@ async def on_message(message):
         match_count[normalize(loser)] += 1
 
     # =========================
-    # RESPONSE
+    # MAIN RESPONSE
     # =========================
     if winner == "Unentschieden":
         await message.channel.send(f"🤝 Unentschieden {w_score}:{l_score}")
@@ -231,7 +233,7 @@ async def on_message(message):
             f"🎮 {loser} noch {remaining(loser)} Spiele"
         )
 
-        # ⚠️ WARNING 1 GAME LEFT
+        # ⚠️ 1 GAME WARNING
         for player in [winner, loser]:
             if remaining(player) == 1:
                 await message.channel.send(
@@ -239,18 +241,25 @@ async def on_message(message):
                 )
 
     # =========================
-    # SECOND CHANNEL LOG (ONLY MATCH PLAYERS)
+    # LOG CHANNEL (ONLY MATCH PLAYERS + STATUS)
     # =========================
-    log_channel = client.get_channel(LOG_CHANNEL_ID)
+    try:
+        log_channel = await client.fetch_channel(LOG_CHANNEL_ID)
 
-    if log_channel:
-        await log_channel.send(
-            f"📊 Match Update:\n"
-            f"{p1} vs {p2}\n"
-            f"Ergebnis: {w_score}:{l_score}"
-        )
+        msg = "📊 Match Update:\n"
+        msg += f"{p1} vs {p2}\n"
+        msg += f"Ergebnis: {w_score}:{l_score}\n\n"
+
+        msg += "🎮 Restspiele (nur Beteiligte):\n"
+        for player in [p1, p2]:
+            msg += f"- {player}: {remaining(player)}\n"
+
+        await log_channel.send(msg)
+
+    except Exception as e:
+        print("❌ LOG CHANNEL ERROR:", e)
 
 # =========================
-# RUN BOT
+# RUN
 # =========================
 client.run(TOKEN)
