@@ -12,7 +12,7 @@ from oauth2client.service_account import ServiceAccountCredentials
 # CONFIG
 # =========================
 TOKEN = os.getenv("TOKEN")
-
+LOG_CHANNEL_ID = 1492394175906320605
 CHANNEL_NAME = "bullseye-rangliste-ergebnisse"
 MAX_MATCHES_PER_DAY = 5
 
@@ -56,8 +56,7 @@ match_count = defaultdict(int)
 last_reset = date.today()
 
 # =========================
-# FLEXIBLE PATTERN
-# (egal ob vs / gegen / Groß-Kleinschreibung / extra Text)
+# REGEX
 # =========================
 pattern = re.compile(
     r"(.+?)\s*(?:vs|gegen)\s*(.+?)\s*(\d+)\s*:\s*(\d+)",
@@ -75,26 +74,16 @@ def reset_daily():
 
 
 def normalize(name):
-    return name.strip().lower()
+    return name.strip().lower().replace("\u00A0", "")
 
 
 def remaining(player):
     return MAX_MATCHES_PER_DAY - match_count[normalize(player)]
 
 
-# =========================
-# SMART NAME RESOLVER
-# =========================
 def resolve_names(message, raw_text):
-    """
-    - ersetzt Mentions durch Namen
-    - funktioniert auch ohne @
-    - garantiert stabile Reihenfolge aus Text
-    """
-
     text = raw_text
 
-    # Mentions ersetzen (nur TEXT ersetzen, NICHT Reihenfolge verändern!)
     for m in message.mentions:
         text = text.replace(f"<@{m.id}>", m.display_name)
         text = text.replace(f"<@!{m.id}>", m.display_name)
@@ -108,13 +97,16 @@ def resolve_names(message, raw_text):
 
 
 # =========================
-# BOT
+# BOT READY
 # =========================
 @client.event
 async def on_ready():
     print(f"✅ Online als {client.user}")
 
 
+# =========================
+# MESSAGE HANDLER
+# =========================
 @client.event
 async def on_message(message):
     if message.author.bot:
@@ -125,10 +117,7 @@ async def on_message(message):
 
     reset_daily()
 
-    content = message.content
-    print("📩 INPUT:", content)
-
-    result = resolve_names(message, content)
+    result = resolve_names(message, message.content)
 
     if not result:
         await message.channel.send("❌ Format: Spieler A vs Spieler B 3:0")
@@ -140,21 +129,14 @@ async def on_message(message):
     s2 = int(s2)
 
     # =========================
-    # ABSOLUTE SCORE LOGIC
-    # (KEINE VERTAUSCHUNG MEHR MÖGLICH)
+    # WIN LOGIC
     # =========================
     if s1 > s2:
-        winner = p1.strip()
-        loser = p2.strip()
-        w_score = s1
-        l_score = s2
-
+        winner, loser = p1, p2
+        w_score, l_score = s1, s2
     elif s2 > s1:
-        winner = p2.strip()
-        loser = p1.strip()
-        w_score = s2
-        l_score = s1
-
+        winner, loser = p2, p1
+        w_score, l_score = s2, s1
     else:
         winner = "Unentschieden"
         loser = ""
@@ -174,7 +156,7 @@ async def on_message(message):
             return
 
     # =========================
-    # SHEETS
+    # SHEET WRITE
     # =========================
     try:
         sheet.append_row([
@@ -191,38 +173,40 @@ async def on_message(message):
         return
 
     # =========================
-    # COUNTER
+    # COUNTER UPDATE
     # =========================
     if winner != "Unentschieden":
         match_count[normalize(winner)] += 1
         match_count[normalize(loser)] += 1
 
     # =========================
-# RESPONSE
-# =========================
-if winner == "Unentschieden":
-    await message.channel.send(f"🤝 Unentschieden {w_score}:{l_score}")
-else:
-    await message.channel.send(
-        f"🏆 Sieger: {winner} ({w_score}:{l_score})\n"
-        f"🎮 {winner} noch {remaining(winner)} Spiele\n"
-        f"🎮 {loser} noch {remaining(loser)} Spiele"
-    )
+    # MAIN RESPONSE
+    # =========================
+    if winner == "Unentschieden":
+        await message.channel.send(f"🤝 Unentschieden {w_score}:{l_score}")
+    else:
+        await message.channel.send(
+            f"🏆 Sieger: {winner} ({w_score}:{l_score})\n"
+            f"🎮 {winner} noch {remaining(winner)} Spiele\n"
+            f"🎮 {loser} noch {remaining(loser)} Spiele"
+        )
 
-# =========================
-# SECOND CHANNEL (OFFENE SPIELE)
-# =========================
-log_channel = client.get_channel(LOG_CHANNEL_ID)
+    # =========================
+    # LOG CHANNEL OUTPUT
+    # =========================
+    try:
+        log_channel = await client.fetch_channel(LOG_CHANNEL_ID)
 
-if log_channel:
-    msg = "📊 Offene Spiele:\n"
+        msg = "📊 Offene Spiele:\n"
+        for player in match_count.keys():
+            rest = remaining(player)
+            if rest > 0:
+                msg += f"{player} hat noch {rest} Spiele\n"
 
-    # Alle Spieler aus aktuellem Match-Tracking
-    for player in match_count.keys():
-        rest = remaining(player)
-        if rest > 0:
-            msg += f"{player} hat noch {rest} Spiele\n"
+        await log_channel.send(msg)
 
-    await log_channel.send(msg)
+    except Exception as e:
+        print("❌ LOG CHANNEL ERROR:", e)
+
 
 client.run(TOKEN)
