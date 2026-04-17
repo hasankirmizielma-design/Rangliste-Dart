@@ -198,16 +198,31 @@ async def on_message(message):
         match_count[normalize(loser)] += 1
 
     # =========================
-    # RESPONSE
-    # =========================
-    if winner == "Unentschieden":
-        await message.channel.send(f"🤝 Unentschieden {w_score}:{l_score}")
-    else:
-        await message.channel.send(
-            f"🏆 Sieger: {winner} ({w_score}:{l_score})\n"
-            f"🎮 {winner} noch {remaining(winner)} Spiele\n"
-            f"🎮 {loser} noch {remaining(loser)} Spiele"
-        )
+# RESPONSE
+# =========================
+if winner == "Unentschieden":
+    await message.channel.send(f"🤝 Unentschieden {w_score}:{l_score}")
+else:
+    await message.channel.send(
+        f"🏆 Sieger: {winner} ({w_score}:{l_score})\n"
+        f"🎮 {winner} noch {remaining(winner)} Spiele\n"
+        f"🎮 {loser} noch {remaining(loser)} Spiele"
+    )
 
+# =========================
+# SECOND CHANNEL (OFFENE SPIELE)
+# =========================
+log_channel = client.get_channel(LOG_CHANNEL_ID)
+
+if log_channel:
+    msg = "📊 Offene Spiele:\n"
+
+    # Alle Spieler aus aktuellem Match-Tracking
+    for player in match_count.keys():
+        rest = remaining(player)
+        if rest > 0:
+            msg += f"{player} hat noch {rest} Spiele\n"
+
+    await log_channel.send(msg)
 
 client.run(TOKEN)
