@@ -12,15 +12,22 @@ from oauth2client.service_account import ServiceAccountCredentials
 # CONFIG
 # =========================
 TOKEN = os.getenv("TOKEN")
+
 CHANNEL_NAME = "bullseye-rangliste-ergebnisse"
 LOG_CHANNEL_ID = 1492394175906320605
+
 MAX_MATCHES_PER_DAY = 5
+
+# 🔐 ADMIN ROLE IDS
+ADMIN_ROLE_IDS = [1463106884595880031]
 
 # =========================
 # DISCORD SETUP
 # =========================
 intents = discord.Intents.default()
 intents.message_content = True
+intents.members = True
+
 client = discord.Client(intents=intents)
 
 # =========================
@@ -55,7 +62,7 @@ match_count = defaultdict(int)
 last_reset = date.today()
 
 # =========================
-# PATTERN
+# REGEX
 # =========================
 pattern = re.compile(
     r"(.+?)\s*(?:vs|gegen)\s*(.+?)\s*(\d+)\s*:\s*(\d+)",
@@ -81,7 +88,7 @@ def remaining(player):
 
 
 def is_admin(member):
-    return any(role.name == "Admin" for role in member.roles)
+    return any(role.id in ADMIN_ROLE_IDS for role in member.roles)
 
 
 def resolve_names(message, raw_text):
@@ -98,13 +105,15 @@ def resolve_names(message, raw_text):
     return match.groups()
 
 # =========================
-# BOT EVENTS
+# BOT READY
 # =========================
 @client.event
 async def on_ready():
     print(f"✅ Online als {client.user}")
 
-
+# =========================
+# MESSAGE HANDLER
+# =========================
 @client.event
 async def on_message(message):
     if message.author.bot:
@@ -119,9 +128,10 @@ async def on_message(message):
     print("📩 INPUT:", content)
 
     # =========================
-    # ADMIN COMMAND: !add
+    # !add COMMAND
     # =========================
     if content.startswith("!add"):
+
         if not is_admin(message.author):
             await message.channel.send("⛔ Nur Admins dürfen das.")
             return
@@ -151,7 +161,7 @@ async def on_message(message):
         return
 
     # =========================
-    # MATCH PARSING
+    # MATCH PARSE
     # =========================
     result = resolve_names(message, content)
 
@@ -203,7 +213,7 @@ async def on_message(message):
     ])
 
     # =========================
-    # COUNTER
+    # COUNTER UPDATE
     # =========================
     if winner != "Unentschieden":
         match_count[normalize(winner)] += 1
@@ -221,9 +231,7 @@ async def on_message(message):
             f"🎮 {loser} noch {remaining(loser)} Spiele"
         )
 
-        # =========================
-        # WARNING SYSTEM
-        # =========================
+        # ⚠️ WARNING 1 GAME LEFT
         for player in [winner, loser]:
             if remaining(player) == 1:
                 await message.channel.send(
@@ -231,16 +239,18 @@ async def on_message(message):
                 )
 
     # =========================
-    # SECOND CHANNEL (ONLY INVOLVED PLAYERS)
+    # SECOND CHANNEL LOG (ONLY MATCH PLAYERS)
     # =========================
     log_channel = client.get_channel(LOG_CHANNEL_ID)
 
     if log_channel:
-        msg = "📊 Match Update:\n"
-        msg += f"- {p1} vs {p2}\n"
-        msg += f"- Ergebnis: {w_score}:{l_score}\n"
+        await log_channel.send(
+            f"📊 Match Update:\n"
+            f"{p1} vs {p2}\n"
+            f"Ergebnis: {w_score}:{l_score}"
+        )
 
-        await log_channel.send(msg)
-
-
+# =========================
+# RUN BOT
+# =========================
 client.run(TOKEN)
