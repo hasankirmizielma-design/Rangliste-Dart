@@ -222,18 +222,23 @@ async def on_message(message):
         match_count[normalize(loser)] += 1
 
     # =========================
-    # MAIN RESPONSE — nur Restspiele, kein Ergebnis
+    # MAIN RESPONSE
     # =========================
-    msg = f"🎮 {p1} noch {remaining(p1)} Spiele\n"
-    msg += f"🎮 {p2} noch {remaining(p2)} Spiele"
-    await message.channel.send(msg)
+    if winner == "Unentschieden":
+        await message.channel.send(f"🤝 Unentschieden {w_score}:{l_score}")
+    else:
+        await message.channel.send(
+            f"🏆 Sieger: {winner} ({w_score}:{l_score})\n"
+            f"🎮 {winner} noch {remaining(winner)} Spiele\n"
+            f"🎮 {loser} noch {remaining(loser)} Spiele"
+        )
 
-    # ⚠️ 1 GAME WARNING
-    for player in [p1, p2]:
-        if remaining(player) == 1:
-            await message.channel.send(
-                f"⚠️ {player} hat nur noch 1 Spiel übrig!"
-            )
+        # ⚠️ 1 GAME WARNING
+        for player in [winner, loser]:
+            if remaining(player) == 1:
+                await message.channel.send(
+                    f"⚠️ {player} hat nur noch 1 Spiel übrig!"
+                )
 
     # =========================
     # LOG CHANNEL (nur Restspiele der Beteiligten)
