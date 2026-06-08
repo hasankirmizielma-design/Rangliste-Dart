@@ -171,7 +171,7 @@ async def on_message(message):
     s2 = int(s2)
 
     # =========================
-    # WIN LOGIC
+    # WIN LOGIC (nur für Limit-Check und Sheets)
     # =========================
     if s1 > s2:
         winner, loser = p1, p2
@@ -222,33 +222,27 @@ async def on_message(message):
         match_count[normalize(loser)] += 1
 
     # =========================
-    # MAIN RESPONSE
+    # MAIN RESPONSE — nur Restspiele, kein Ergebnis
     # =========================
-    if winner == "Unentschieden":
-        await message.channel.send(f"🤝 Unentschieden {w_score}:{l_score}")
-    else:
-        await message.channel.send(
-            f"🏆 Sieger: {winner} ({w_score}:{l_score})\n"
-            f"🎮 {winner} noch {remaining(winner)} Spiele\n"
-            f"🎮 {loser} noch {remaining(loser)} Spiele"
-        )
+    msg = f"🎮 {p1} noch {remaining(p1)} Spiele\n"
+    msg += f"🎮 {p2} noch {remaining(p2)} Spiele"
+    await message.channel.send(msg)
 
-        # ⚠️ 1 GAME WARNING
-        for player in [winner, loser]:
-            if remaining(player) == 1:
-                await message.channel.send(
-                    f"⚠️ {player} hat nur noch 1 Spiel übrig!"
-                )
+    # ⚠️ 1 GAME WARNING
+    for player in [p1, p2]:
+        if remaining(player) == 1:
+            await message.channel.send(
+                f"⚠️ {player} hat nur noch 1 Spiel übrig!"
+            )
 
     # =========================
-    # LOG CHANNEL (ONLY MATCH PLAYERS + STATUS)
+    # LOG CHANNEL (nur Restspiele der Beteiligten)
     # =========================
     try:
         log_channel = await client.fetch_channel(LOG_CHANNEL_ID)
 
         msg = "📊 Match Update:\n"
-        msg += f"{p1} vs {p2}\n"
-        msg += f"Ergebnis: {w_score}:{l_score}\n\n"
+        msg += f"{p1} vs {p2}\n\n"
 
         msg += "🎮 Restspiele (nur Beteiligte):\n"
         for player in [p1, p2]:
