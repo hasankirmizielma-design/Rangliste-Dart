@@ -88,15 +88,13 @@ async def check_meilensteine(spieler_name, spielabsprachen_channel):
         for milestone, spruch in SPIELE_MEILENSTEINE.items():
             if s["spiele"] == milestone:
                 await spielabsprachen_channel.send(
-                    f"🎉 **Meilenstein für {spieler_name}!**
-{spruch}"
+                    f"🎉 **Meilenstein fuer {spieler_name}!**\n{spruch}"
                 )
 
         for milestone, spruch in SIEGE_MEILENSTEINE.items():
             if s["siege"] == milestone:
                 await spielabsprachen_channel.send(
-                    f"🎉 **Meilenstein für {spieler_name}!**
-{spruch}"
+                    f"🎉 **Meilenstein fuer {spieler_name}!**\n{spruch}"
                 )
     except Exception as e:
         print("❌ MEILENSTEIN ERROR:", e)
