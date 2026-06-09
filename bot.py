@@ -3,9 +3,11 @@ import re
 import os
 import json
 import random
+import io
 from collections import defaultdict
 from datetime import date, datetime
 import asyncio
+from PIL import Image, ImageDraw, ImageFont
 
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
@@ -259,29 +261,73 @@ def get_tabelle():
     return result
 
 
-def format_tabelle(tabelle):
-    """Formatiert die Tabelle als Discord-Codeblöcke (max 2000 Zeichen pro Nachricht)."""
-    header = f"{'Rg':<3} {'Name':<18} {'Sp':>3} {'S':>3} {'N':>3} {'L+':>4} {'L-':>4} {'Dif':>4} {'Pkt':>4}"
-    separator = "─" * 48
-    messages = []
-    chunk = ["```", header, separator]
+def generate_tabelle_image(tabelle, title):
+    """Generiert die Tabelle als Bild."""
+    FONT_PATH = "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf"
+    FONT_SIZE = 16
+    PADDING = 16
+    ROW_HEIGHT = 24
+    BG_COLOR = (44, 47, 51)       # Discord Dunkel
+    HEADER_COLOR = (255, 255, 255)
+    ROW_COLOR = (220, 220, 220)
+    ALT_ROW_COLOR = (180, 180, 180)
+    SEP_COLOR = (100, 100, 100)
+    TITLE_COLOR = (255, 255, 255)
 
-    for i, p in enumerate(tabelle, 1):
-        line = (
-            f"{i:<3} {p['name']:<18} {p['spiele']:>3} {p['siege']:>3} {p['niederlagen']:>3} "
-            f"{p['legs_plus']:>4} {p['legs_minus']:>4} {p['leg_dif']:>4} {p['punkte']:>4}"
-        )
-        chunk.append(line)
-        # Prüfen ob Nachricht zu lang wird
-        test = "\n".join(chunk + ["```"])
-        if len(test) > 1800:
-            chunk.append("```")
-            messages.append("\n".join(chunk))
-            chunk = ["```", header, separator, line]
+    font = ImageFont.truetype(FONT_PATH, FONT_SIZE)
+    title_font = ImageFont.truetype(FONT_PATH, 18)
 
-    chunk.append("```")
-    messages.append("\n".join(chunk))
-    return messages
+    # Spalten definieren
+    cols = ["Rg", "Name", "Sp", "S", "N", "L+", "L-", "Dif", "Pkt"]
+    col_widths = [35, 180, 35, 35, 35, 45, 45, 45, 45]
+    total_width = sum(col_widths) + PADDING * 2
+
+    num_rows = len(tabelle)
+    total_height = PADDING + 30 + ROW_HEIGHT + 4 + (num_rows * ROW_HEIGHT) + PADDING
+
+    img = Image.new("RGB", (total_width, total_height), BG_COLOR)
+    draw = ImageDraw.Draw(img)
+
+    y = PADDING
+    # Titel
+    draw.text((PADDING, y), title, font=title_font, fill=TITLE_COLOR)
+    y += 30
+
+    # Header
+    x = PADDING
+    for col, w in zip(cols, col_widths):
+        draw.text((x, y), col, font=font, fill=HEADER_COLOR)
+        x += w
+    y += ROW_HEIGHT
+
+    # Trennlinie
+    draw.line([(PADDING, y), (total_width - PADDING, y)], fill=SEP_COLOR, width=1)
+    y += 4
+
+    # Zeilen
+    for i, p in enumerate(tabelle):
+        color = ALT_ROW_COLOR if i % 2 == 0 else ROW_COLOR
+        values = [
+            str(i + 1),
+            p["name"],
+            str(p["spiele"]),
+            str(p["siege"]),
+            str(p["niederlagen"]),
+            str(p["legs_plus"]),
+            str(p["legs_minus"]),
+            str(p["leg_dif"]),
+            str(p["punkte"]),
+        ]
+        x = PADDING
+        for val, w in zip(values, col_widths):
+            draw.text((x, y), val, font=font, fill=color)
+            x += w
+        y += ROW_HEIGHT
+
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    buf.seek(0)
+    return buf
 
 
 async def post_tabelle():
@@ -291,9 +337,9 @@ async def post_tabelle():
         if not tabelle:
             return
         channel = await client.fetch_channel(TABELLE_CHANNEL_ID)
-        await channel.send(f"📊 **Aktuelle Tabelle** ({datetime.now().strftime('%d.%m.%Y %H:%M')} Uhr)")
-        for chunk in format_tabelle(tabelle):
-            await channel.send(chunk)
+        title = f"Aktuelle Tabelle  {datetime.now().strftime('%d.%m.%Y %H:%M')} Uhr"
+        img_buf = generate_tabelle_image(tabelle, title)
+        await channel.send(file=discord.File(img_buf, filename="tabelle.png"))
     except Exception as e:
         print("❌ TABELLE ERROR:", e)
 
@@ -497,10 +543,9 @@ async def on_message(message):
             if not tabelle:
                 await message.channel.send("❌ Keine Daten gefunden.")
                 return
-            header_msg = f"📊 **Aktuelle Tabelle** ({datetime.now().strftime('%d.%m.%Y %H:%M')} Uhr)"
-            await message.channel.send(header_msg)
-            for chunk in format_tabelle(tabelle):
-                await message.channel.send(chunk)
+            title = f"Aktuelle Tabelle  {datetime.now().strftime('%d.%m.%Y %H:%M')} Uhr"
+            img_buf = generate_tabelle_image(tabelle, title)
+            await message.channel.send(file=discord.File(img_buf, filename="tabelle.png"))
         except Exception as e:
             print("❌ TABELLE CMD ERROR:", e)
             await message.channel.send(f"❌ Fehler beim Laden der Tabelle: `{e}`")
