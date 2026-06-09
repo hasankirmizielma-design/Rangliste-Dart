@@ -260,17 +260,28 @@ def get_tabelle():
 
 
 def format_tabelle(tabelle):
-    """Formatiert die Tabelle als Discord-Codeblock."""
-    lines = ["```"]
-    lines.append(f"{'Rg':<3} {'Name':<18} {'Sp':>3} {'S':>3} {'N':>3} {'L+':>4} {'L-':>4} {'Dif':>4} {'Pkt':>4}")
-    lines.append("─" * 48)
+    """Formatiert die Tabelle als Discord-Codeblöcke (max 2000 Zeichen pro Nachricht)."""
+    header = f"{'Rg':<3} {'Name':<18} {'Sp':>3} {'S':>3} {'N':>3} {'L+':>4} {'L-':>4} {'Dif':>4} {'Pkt':>4}"
+    separator = "─" * 48
+    messages = []
+    chunk = ["```", header, separator]
+
     for i, p in enumerate(tabelle, 1):
-        lines.append(
+        line = (
             f"{i:<3} {p['name']:<18} {p['spiele']:>3} {p['siege']:>3} {p['niederlagen']:>3} "
             f"{p['legs_plus']:>4} {p['legs_minus']:>4} {p['leg_dif']:>4} {p['punkte']:>4}"
         )
-    lines.append("```")
-    return "\n".join(lines)
+        chunk.append(line)
+        # Prüfen ob Nachricht zu lang wird
+        test = "\n".join(chunk + ["```"])
+        if len(test) > 1800:
+            chunk.append("```")
+            messages.append("\n".join(chunk))
+            chunk = ["```", header, separator, line]
+
+    chunk.append("```")
+    messages.append("\n".join(chunk))
+    return messages
 
 
 async def post_tabelle():
@@ -280,9 +291,9 @@ async def post_tabelle():
         if not tabelle:
             return
         channel = await client.fetch_channel(TABELLE_CHANNEL_ID)
-        msg = f"📊 **Aktuelle Tabelle** ({datetime.now().strftime('%d.%m.%Y %H:%M')} Uhr)\n"
-        msg += format_tabelle(tabelle)
-        await channel.send(msg)
+        await channel.send(f"📊 **Aktuelle Tabelle** ({datetime.now().strftime('%d.%m.%Y %H:%M')} Uhr)")
+        for chunk in format_tabelle(tabelle):
+            await channel.send(chunk)
     except Exception as e:
         print("❌ TABELLE ERROR:", e)
 
@@ -486,9 +497,10 @@ async def on_message(message):
             if not tabelle:
                 await message.channel.send("❌ Keine Daten gefunden.")
                 return
-            msg = f"📊 **Aktuelle Tabelle** ({datetime.now().strftime('%d.%m.%Y %H:%M')} Uhr)\n"
-            msg += format_tabelle(tabelle)
-            await message.channel.send(msg)
+            header_msg = f"📊 **Aktuelle Tabelle** ({datetime.now().strftime('%d.%m.%Y %H:%M')} Uhr)"
+            await message.channel.send(header_msg)
+            for chunk in format_tabelle(tabelle):
+                await message.channel.send(chunk)
         except Exception as e:
             print("❌ TABELLE CMD ERROR:", e)
             await message.channel.send(f"❌ Fehler beim Laden der Tabelle: `{e}`")
