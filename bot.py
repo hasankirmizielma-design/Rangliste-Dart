@@ -23,19 +23,6 @@ LANZI_NAME = "lanzi_90"
 # 🔐 ADMIN ROLE ID
 ADMIN_ROLE_IDS = [1463106884595880031]
 
-# 😄 BELEIDIGUNGEN FÜR LANZI_90
-LANZI_INSULTS = [
-    "Lanzi_90 spielt Dart wie er denkt — selten und schlecht 🎯",
-    "Lanzi_90 wirft die Pfeile, die Scheibe weint 😢",
-    "Selbst ein blinder Opa trifft mehr als Lanzi_90 👴",
-    "Lanzi_90 ist der Grund warum Dartscheiben Therapie brauchen 🛋️",
-    "Lanzi_90 hat wieder gespielt... die Scheibe hat gekündigt 📝",
-    "Lanzi_90 wirft so schlecht, die Pfeile schämen sich selbst 🪃",
-    "Lanzi_90 spielt seit Jahren Dart und wird trotzdem schlechter 📉",
-    "Wenn Lanzi_90 wirft, betet die Wand 🙏",
-    "Lanzi_90 trifft öfter Leute als die Scheibe ☠️",
-    "Lanzi_90 und Dart — eine Tragödie in mehreren Akten 🎭",
-]
 lanzi_insult_index = 0
 
 # 🤝 UNENTSCHIEDEN-SPRÜCHE
@@ -51,10 +38,16 @@ UNENTSCHIEDEN_SPRUECHE = [
 def get_dominanz_spruch(winner, score_diff):
     if score_diff >= 3:
         sprueche = [
-            f"🔥 {winner} zeigt keine Gnade!",
-            f"👑 Absolute Dominanz von {winner}!",
-            f"💀 {winner} hat heute kein Erbarmen!",
-            f"🚀 {winner} schickt den Gegner nach Hause!",
+            f"Jemand hat heute zu viel geübt 😏",
+            f"Die Dartscheibe hat Angst bekommen 🎯😂",
+            f"Selbst der Schiedsrichter hat gelacht 😂",
+            f"War das Dart oder ein Kunstwerk? 🎨",
+            f"Die Pfeile wussten wo sie hingehören 🏹",
+            f"Jemand hat heute seinen Spinat gegessen 🥬💪",
+            f"Die Schwerkraft hat heute mitgespielt 🌍",
+            f"Statistisch unmöglich — aber hier sind wir 📊",
+            f"Der Gegner braucht jetzt erstmal Urlaub 🏖️",
+            f"So trifft man, wenn man die Augen zumacht 😎",
         ]
         return random.choice(sprueche)
     return None
@@ -528,11 +521,7 @@ async def on_message(message):
             msg += f"- {player}: {remaining(player)}\n"
         await spielabsprachen.send(msg)
 
-        # 😄 BELEIDIGUNG FÜR LANZI_90
-        if normalize(p1) == LANZI_NAME or normalize(p2) == LANZI_NAME:
-            insult = LANZI_INSULTS[lanzi_insult_index % len(LANZI_INSULTS)]
-            lanzi_insult_index += 1
-            await spielabsprachen.send(insult)
+
 
     except Exception as e:
         print("❌ SPIELABSPRACHEN ERROR:", e)
