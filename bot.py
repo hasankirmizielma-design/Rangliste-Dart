@@ -256,14 +256,15 @@ async def on_message(message):
     # =========================
     # !stats Spieler
     # =========================
-    if content.startswith("!stats"):
+    if content.lower().startswith("!stats"):
         if not is_stats_channel:
             return
 
         WARTELISTE_ROLE_ID = 1492563010395312301
 
         # Rollen-Stats: !stats @Warteliste
-        if message.role_mentions and any(r.id == WARTELISTE_ROLE_ID for r in message.role_mentions):
+        is_role_stats = (message.role_mentions and any(r.id == WARTELISTE_ROLE_ID for r in message.role_mentions)) or str(WARTELISTE_ROLE_ID) in content or "warteliste" in content.lower()
+        if is_role_stats:
             try:
                 stats = get_stats_from_sheet()
                 guild = message.guild
@@ -344,7 +345,7 @@ async def on_message(message):
     # =========================
     # !top — Rangliste Top 10
     # =========================
-    if content.startswith("!top") or content.startswith("!rangliste"):
+    if content.lower().startswith("!top") or content.lower().startswith("!rangliste"):
         if not is_stats_channel:
             return
         try:
@@ -375,7 +376,7 @@ async def on_message(message):
     # =========================
     # !streak Spieler
     # =========================
-    if content.startswith("!streak"):
+    if content.lower().startswith("!streak"):
         if not is_stats_channel:
             return
         parts = content.split(None, 1)
@@ -403,7 +404,7 @@ async def on_message(message):
     # =========================
     # !undo — letztes Ergebnis löschen
     # =========================
-    if content.startswith("!undo"):
+    if content.lower().startswith("!undo"):
         if not is_main_channel:
             return
         if not is_admin(message.author):
@@ -429,7 +430,7 @@ async def on_message(message):
     # =========================
     # ADMIN COMMAND !add
     # =========================
-    if content.startswith("!add"):
+    if content.lower().startswith("!add"):
         if not is_admin(message.author):
             await message.channel.send("⛔ Nur Admins dürfen das.")
             return
