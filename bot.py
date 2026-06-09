@@ -16,6 +16,7 @@ from oauth2client.service_account import ServiceAccountCredentials
 TOKEN = os.getenv("TOKEN")
 LOG_CHANNEL_ID = 1492394175906320605
 STATS_CHANNEL_ID = 1513493210910167170
+TABELLE_CHANNEL_ID = 1492394072369922118
 CHANNEL_NAME = "bullseye-rangliste-ergebnisse"
 MAX_MATCHES_PER_DAY = 5
 LANZI_NAME = "lanzi_90"
@@ -178,6 +179,119 @@ def get_streak_from_sheet(player_name):
     return streak
 
 
+def get_tabelle():
+    """Berechnet die komplette Rangliste aus dem Sheet."""
+    rows = sheet.get_all_values()
+    stats = {}
+
+    for row in rows:
+        if len(row) < 6:
+            continue
+        winner = row[0].strip()
+        loser = row[1].strip()
+        try:
+            w_score = int(row[2])
+            l_score = int(row[3])
+        except:
+            continue
+
+        if not winner or not loser:
+            continue
+
+        if winner == "Unentschieden":
+            for p in [row[4].strip(), row[5].strip()]:
+                if p not in stats:
+                    stats[p] = {"spiele": 0, "siege": 0, "niederlagen": 0, "legs_plus": 0, "legs_minus": 0}
+                stats[p]["spiele"] += 1
+                stats[p]["legs_plus"] += w_score
+                stats[p]["legs_minus"] += l_score
+        else:
+            for p in [winner, loser]:
+                if p not in stats:
+                    stats[p] = {"spiele": 0, "siege": 0, "niederlagen": 0, "legs_plus": 0, "legs_minus": 0}
+
+            stats[winner]["spiele"] += 1
+            stats[winner]["siege"] += 1
+            stats[winner]["legs_plus"] += w_score
+            stats[winner]["legs_minus"] += l_score
+
+            stats[loser]["spiele"] += 1
+            stats[loser]["niederlagen"] += 1
+            stats[loser]["legs_plus"] += l_score
+            stats[loser]["legs_minus"] += w_score
+
+    # Punkte berechnen: 3 pro Sieg
+    result = []
+    for name, s in stats.items():
+        punkte = s["siege"] * 3
+        leg_dif = s["legs_plus"] - s["legs_minus"]
+        result.append({
+            "name": name,
+            "spiele": s["spiele"],
+            "siege": s["siege"],
+            "niederlagen": s["niederlagen"],
+            "legs_plus": s["legs_plus"],
+            "legs_minus": s["legs_minus"],
+            "leg_dif": leg_dif,
+            "punkte": punkte,
+        })
+
+    # Sortieren: Punkte desc, dann Leg-Differenz desc
+    result.sort(key=lambda x: (x["punkte"], x["leg_dif"]), reverse=True)
+    return result
+
+
+def format_tabelle(tabelle):
+    """Formatiert die Tabelle als Discord-Codeblock."""
+    lines = ["```"]
+    lines.append(f"{'Rg':<3} {'Name':<18} {'Sp':>3} {'S':>3} {'N':>3} {'L+':>4} {'L-':>4} {'Dif':>4} {'Pkt':>4}")
+    lines.append("─" * 48)
+    for i, p in enumerate(tabelle, 1):
+        lines.append(
+            f"{i:<3} {p['name']:<18} {p['spiele']:>3} {p['siege']:>3} {p['niederlagen']:>3} "
+            f"{p['legs_plus']:>4} {p['legs_minus']:>4} {p['leg_dif']:>4} {p['punkte']:>4}"
+        )
+    lines.append("```")
+    return "\n".join(lines)
+
+
+async def post_tabelle():
+    """Postet die Tabelle in den Tabellen-Channel."""
+    try:
+        tabelle = get_tabelle()
+        if not tabelle:
+            return
+        channel = await client.fetch_channel(TABELLE_CHANNEL_ID)
+        msg = f"📊 **Aktuelle Tabelle** ({datetime.now().strftime('%d.%m.%Y %H:%M')} Uhr)\n"
+        msg += format_tabelle(tabelle)
+        await channel.send(msg)
+    except Exception as e:
+        print("❌ TABELLE ERROR:", e)
+
+
+async def tabelle_scheduler():
+    """Postet die Tabelle um 07:00, 14:00 und 22:00 Uhr."""
+    await client.wait_until_ready()
+    post_times = [(7, 0), (14, 0), (22, 0)]
+    while not client.is_closed():
+        now = datetime.now()
+        # Nächsten Post-Zeitpunkt finden
+        next_post = None
+        for hour, minute in post_times:
+            candidate = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+            if candidate > now:
+                next_post = candidate
+                break
+        if next_post is None:
+            # Nächster ist morgen 07:00
+            from datetime import timedelta
+            next_post = (now + timedelta(days=1)).replace(hour=7, minute=0, second=0, microsecond=0)
+
+        wait_seconds = (next_post - now).total_seconds()
+        await asyncio.sleep(wait_seconds)
+        await post_tabelle()
+
+
 async def midnight_auswertung():
     """Läuft täglich um Mitternacht und postet Tagesauswertung."""
     await client.wait_until_ready()
@@ -230,6 +344,7 @@ async def midnight_auswertung():
 async def on_ready():
     print(f"✅ Online als {client.user}")
     client.loop.create_task(midnight_auswertung())
+    client.loop.create_task(tabelle_scheduler())
 
 
 # =========================
@@ -345,6 +460,22 @@ async def on_message(message):
     # =========================
     # !top — Rangliste Top 10
     # =========================
+    if content.lower().startswith("!tabelle"):
+        if not is_stats_channel:
+            return
+        try:
+            tabelle = get_tabelle()
+            if not tabelle:
+                await message.channel.send("❌ Keine Daten gefunden.")
+                return
+            msg = f"📊 **Aktuelle Tabelle** ({datetime.now().strftime('%d.%m.%Y %H:%M')} Uhr)\n"
+            msg += format_tabelle(tabelle)
+            await message.channel.send(msg)
+        except Exception as e:
+            print("❌ TABELLE CMD ERROR:", e)
+            await message.channel.send("❌ Fehler beim Laden der Tabelle.")
+        return
+
     if content.lower().startswith("!top") or content.lower().startswith("!rangliste"):
         if not is_stats_channel:
             return
