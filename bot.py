@@ -259,20 +259,64 @@ async def on_message(message):
     if content.startswith("!stats"):
         if not is_stats_channel:
             return
+
+        WARTELISTE_ROLE_ID = 1492563010395312301
+
+        # Rollen-Stats: !stats @Warteliste
+        if message.role_mentions and any(r.id == WARTELISTE_ROLE_ID for r in message.role_mentions):
+            try:
+                stats = get_stats_from_sheet()
+                guild = message.guild
+                role = guild.get_role(WARTELISTE_ROLE_ID)
+                if not role:
+                    await message.channel.send("❌ Rolle nicht gefunden.")
+                    return
+
+                members_with_role = [m for m in role.members]
+                if not members_with_role:
+                    await message.channel.send("❌ Keine Mitglieder mit dieser Rolle.")
+                    return
+
+                await message.channel.send(f"📊 **Stats für alle Spieler mit Rolle {role.name}:**")
+
+                for member in members_with_role:
+                    player = member.display_name
+                    s = stats.get(player)
+                    if not s:
+                        for k, v in stats.items():
+                            if normalize(k) == normalize(player):
+                                s = v
+                                break
+
+                    if not s or s["spiele"] == 0:
+                        await message.channel.send(f"➖ **{player}** — Noch keine Spiele im Sheet.")
+                    else:
+                        winrate = round(s["siege"] / s["spiele"] * 100, 1)
+                        msg = (
+                            f"📊 **{player}**\n"
+                            f"🎮 Spiele: {s['spiele']} | 🏆 Siege: {s['siege']} | 💀 Niederlagen: {s['niederlagen']} | 📈 Win-Rate: {winrate}%"
+                        )
+                        await message.channel.send(msg)
+
+            except Exception as e:
+                print("❌ STATS ROLLE ERROR:", e)
+                await message.channel.send("❌ Fehler beim Laden der Rollen-Stats.")
+            return
+
+        # Einzelspieler-Stats
         parts = content.split(None, 1)
         if message.mentions:
             player = message.mentions[0].display_name
         elif len(parts) > 1:
             player = parts[1].strip()
         else:
-            await message.channel.send("❌ Nutzung: !stats Spielername")
+            await message.channel.send("❌ Nutzung: !stats Spielername oder !stats @Warteliste")
             return
 
         try:
             stats = get_stats_from_sheet()
             s = stats.get(player)
             if not s:
-                # Suche case-insensitive
                 for k, v in stats.items():
                     if normalize(k) == normalize(player):
                         s = v
