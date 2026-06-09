@@ -56,6 +56,53 @@ def get_dominanz_spruch(winner, score_diff):
     return None
 
 # =========================
+# MEILENSTEINE
+# =========================
+SPIELE_MEILENSTEINE = {
+    10: "10 Spiele — der Anfang einer Legende! Weiter so! 🚀",
+    25: "25 Spiele — du meinst es ernst! Die Scheibe hat Respekt! 🎯",
+    50: "50 Spiele — halbe Hundert! Du bist nicht mehr aufzuhalten! 💪",
+    100: "100 Spiele — absolute Legende! Die Halle gehört dir! 👑",
+}
+
+SIEGE_MEILENSTEINE = {
+    10: "10 Siege — Bronzerang verdient! Die Gegner zittern! 🥉",
+    25: "25 Siege — Silber! Du weißt wie man gewinnt! 🥈",
+    50: "50 Siege — Gold! Eine Klasse für sich! 🥇",
+    100: "100 Siege — unsterblich! Niemand kommt dir gleich! 👑",
+}
+
+
+async def check_meilensteine(spieler_name, spielabsprachen_channel):
+    """Prüft ob ein Spieler einen Meilenstein erreicht hat."""
+    try:
+        stats = get_stats_from_sheet()
+        s = None
+        for k, v in stats.items():
+            if normalize(k) == normalize(spieler_name):
+                s = v
+                break
+        if not s:
+            return
+
+        for milestone, spruch in SPIELE_MEILENSTEINE.items():
+            if s["spiele"] == milestone:
+                await spielabsprachen_channel.send(
+                    f"🎉 **Meilenstein für {spieler_name}!**
+{spruch}"
+                )
+
+        for milestone, spruch in SIEGE_MEILENSTEINE.items():
+            if s["siege"] == milestone:
+                await spielabsprachen_channel.send(
+                    f"🎉 **Meilenstein für {spieler_name}!**
+{spruch}"
+                )
+    except Exception as e:
+        print("❌ MEILENSTEIN ERROR:", e)
+
+
+# =========================
 # DISCORD SETUP
 # =========================
 intents = discord.Intents.default()
@@ -99,7 +146,7 @@ today_matches = []  # für Tagesauswertung: liste von dicts
 # REGEX
 # =========================
 pattern = re.compile(
-    r"(.+?)\s*(?:vs|gegen)\s*(.+?)\s*[\(\[]?\s*(\d+)\s*:\s*(\d+)",
+    r"(.+?)\s*(?:vs\.?|gegen)\s*(.+?)\s*[\(\[]?\s*(\d+)\s*[:\-]\s*(\d+)",
     re.IGNORECASE
 )
 
@@ -360,22 +407,27 @@ async def post_tabelle():
 
 
 async def tabelle_scheduler():
-    """Postet die Tabelle um 07:00, 14:00 und 22:00 Uhr."""
+    """Postet die Tabelle um 07:00, 14:00 und 22:00 Uhr (Europe/Berlin)."""
     await client.wait_until_ready()
-    post_times = [(7, 0), (14, 0), (22, 0)]
+    from datetime import timedelta, timezone
+    # UTC Zeiten für 07:00, 14:00, 22:00 Europe/Berlin (UTC+2 im Sommer, UTC+1 im Winter)
+    # Wir rechnen mit UTC+2 (Sommerzeit)
+    UTC_OFFSET = 2
+    post_times_local = [(7, 0), (14, 0), (22, 0)]
+    post_times_utc = [((h - UTC_OFFSET) % 24, m) for h, m in post_times_local]
+
     while not client.is_closed():
-        now = datetime.now()
-        # Nächsten Post-Zeitpunkt finden
+        now = datetime.utcnow()
         next_post = None
-        for hour, minute in post_times:
+        for hour, minute in sorted(post_times_utc):
             candidate = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
             if candidate > now:
                 next_post = candidate
                 break
         if next_post is None:
-            # Nächster ist morgen 07:00
-            from datetime import timedelta
-            next_post = (now + timedelta(days=1)).replace(hour=7, minute=0, second=0, microsecond=0)
+            next_post = (now + timedelta(days=1)).replace(
+                hour=post_times_utc[0][0], minute=post_times_utc[0][1], second=0, microsecond=0
+            )
 
         wait_seconds = (next_post - now).total_seconds()
         await asyncio.sleep(wait_seconds)
@@ -683,6 +735,15 @@ async def on_message(message):
     # =========================
     # MATCH PARSE
     # =========================
+    # Prüfen ob beide Spieler als @ markiert wurden
+    if len(message.mentions) < 2:
+        await message.channel.send(
+            "Ohne @ bin ich blind. Ich bin ein Bot, kein Hellseher 🔮\n"
+            "⚠️ **Bitte Spieler mit @ markieren!**\n"
+            "Beispiel: `@Red_Apple17 vs @Lanzi_90 3:2`"
+        )
+        return
+
     result = resolve_names(message, content)
 
     if not result:
@@ -692,6 +753,23 @@ async def on_message(message):
     p1, p2, s1, s2 = result
     s1 = int(s1)
     s2 = int(s2)
+
+    # =========================
+    # GLEICHER SPIELER CHECK
+    # =========================
+    if normalize(p1) == normalize(p2):
+        await message.channel.send("🤦 Niemand kann gegen sich selbst spielen... oder doch? ❌")
+        return
+
+    # =========================
+    # SCORE VALIDIERUNG
+    # =========================
+    if s1 == 0 and s2 == 0:
+        await message.channel.send("0:0? Hat überhaupt jemand gespielt? 😂 ❌")
+        return
+    if s1 > 20 or s2 > 20:
+        await message.channel.send("❌ Das ist Dart, kein Fußball. Unrealistischer Score!")
+        return
 
     # =========================
     # WIN LOGIC
@@ -746,6 +824,16 @@ async def on_message(message):
 
     # Tages-Tracking
     today_matches.append({"p1": p1, "p2": p2, "winner": winner})
+
+    # =========================
+    # MEILENSTEIN CHECK
+    # =========================
+    try:
+        spielabsprachen = await client.fetch_channel(LOG_CHANNEL_ID)
+        for player in [p1, p2]:
+            await check_meilensteine(player, spielabsprachen)
+    except Exception as e:
+        print("❌ MEILENSTEIN FETCH ERROR:", e)
 
     # =========================
     # MAIN RESPONSE
