@@ -144,81 +144,99 @@ def resolve_names(message, raw_text):
 
 
 def get_stats_from_sheet():
-    """Liest alle Zeilen und berechnet Statistiken pro Spieler."""
+    """Liest alle Zeilen und berechnet Statistiken pro Spieler.
+    Spalten: A=SpielerA, B=SpielerB, C=LegsA, D=LegsB, G=Gewinner
+    """
     rows = sheet.get_all_values()
     stats = defaultdict(lambda: {"siege": 0, "niederlagen": 0, "spiele": 0})
 
     for row in rows:
-        if len(row) < 2:
+        if len(row) < 7:
             continue
-        winner = row[0].strip()
-        loser = row[1].strip()
-        if not winner or not loser or winner == "Unentschieden":
+        p1 = row[0].strip()
+        p2 = row[1].strip()
+        winner = row[6].strip()
+        if not p1 or not p2 or p1.lower() == "spieler a":
             continue
-        stats[winner]["siege"] += 1
-        stats[winner]["spiele"] += 1
-        stats[loser]["niederlagen"] += 1
-        stats[loser]["spiele"] += 1
+        stats[p1]["spiele"] += 1
+        stats[p2]["spiele"] += 1
+        if winner and winner.lower() != "unentschieden":
+            if normalize(winner) == normalize(p1):
+                stats[p1]["siege"] += 1
+                stats[p2]["niederlagen"] += 1
+            elif normalize(winner) == normalize(p2):
+                stats[p2]["siege"] += 1
+                stats[p1]["niederlagen"] += 1
 
     return stats
 
 
 def get_streak_from_sheet(player_name):
-    """Berechnet aktuelle Siegesserie eines Spielers."""
+    """Berechnet aktuelle Siegesserie eines Spielers.
+    Spalten: A=SpielerA, B=SpielerB, G=Gewinner
+    """
     rows = sheet.get_all_values()
     streak = 0
     for row in reversed(rows):
-        if len(row) < 2:
+        if len(row) < 7:
             continue
-        winner = row[0].strip()
-        loser = row[1].strip()
-        if normalize(winner) == normalize(player_name):
-            streak += 1
-        elif normalize(loser) == normalize(player_name):
-            break
+        p1 = row[0].strip()
+        p2 = row[1].strip()
+        winner = row[6].strip()
+        if p1.lower() == "spieler a":
+            continue
+        if normalize(p1) == normalize(player_name) or normalize(p2) == normalize(player_name):
+            if normalize(winner) == normalize(player_name):
+                streak += 1
+            else:
+                break
     return streak
 
 
 def get_tabelle():
-    """Berechnet die komplette Rangliste aus dem Sheet."""
+    """Berechnet die komplette Rangliste aus dem Sheet.
+    Spalten: A=SpielerA, B=SpielerB, C=LegsA, D=LegsB, G=Gewinner (index 6)
+    """
     rows = sheet.get_all_values()
     stats = {}
 
     for row in rows:
-        if len(row) < 6:
+        # Überspringe Header oder unvollständige Zeilen
+        if len(row) < 7:
             continue
-        winner = row[0].strip()
-        loser = row[1].strip()
+        p1 = row[0].strip()
+        p2 = row[1].strip()
         try:
-            w_score = int(row[2])
-            l_score = int(row[3])
+            legs_a = int(row[2])
+            legs_b = int(row[3])
         except:
             continue
+        winner = row[6].strip()
 
-        if not winner or not loser:
+        if not p1 or not p2:
+            continue
+        # Header-Zeile überspringen
+        if p1.lower() == "spieler a":
             continue
 
-        if winner == "Unentschieden":
-            for p in [row[4].strip(), row[5].strip()]:
-                if p not in stats:
-                    stats[p] = {"spiele": 0, "siege": 0, "niederlagen": 0, "legs_plus": 0, "legs_minus": 0}
-                stats[p]["spiele"] += 1
-                stats[p]["legs_plus"] += w_score
-                stats[p]["legs_minus"] += l_score
-        else:
-            for p in [winner, loser]:
-                if p not in stats:
-                    stats[p] = {"spiele": 0, "siege": 0, "niederlagen": 0, "legs_plus": 0, "legs_minus": 0}
+        for p in [p1, p2]:
+            if p not in stats:
+                stats[p] = {"spiele": 0, "siege": 0, "niederlagen": 0, "legs_plus": 0, "legs_minus": 0}
 
-            stats[winner]["spiele"] += 1
-            stats[winner]["siege"] += 1
-            stats[winner]["legs_plus"] += w_score
-            stats[winner]["legs_minus"] += l_score
+        stats[p1]["spiele"] += 1
+        stats[p1]["legs_plus"] += legs_a
+        stats[p1]["legs_minus"] += legs_b
 
-            stats[loser]["spiele"] += 1
-            stats[loser]["niederlagen"] += 1
-            stats[loser]["legs_plus"] += l_score
-            stats[loser]["legs_minus"] += w_score
+        stats[p2]["spiele"] += 1
+        stats[p2]["legs_plus"] += legs_b
+        stats[p2]["legs_minus"] += legs_a
+
+        if winner and winner.lower() != "unentschieden":
+            if winner in stats:
+                stats[winner]["siege"] += 1
+            loser = p2 if normalize(winner) == normalize(p1) else p1
+            if loser in stats:
+                stats[loser]["niederlagen"] += 1
 
     # Punkte berechnen: 3 pro Sieg
     result = []
