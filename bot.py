@@ -273,21 +273,22 @@ def generate_tabelle_image(tabelle, title):
     SEP_COLOR = (100, 100, 100)
     TITLE_COLOR = (255, 255, 255)
 
-    # Font laden - versuche Systemfonts, fallback auf Standard
-    font = None
-    title_font = None
-    for font_path in [
-        "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
-        "/usr/share/fonts/truetype/liberation/LiberationMono-Regular.ttf",
-        "/usr/share/fonts/truetype/ubuntu/UbuntuMono-R.ttf",
-    ]:
+    # Font laden
+    import urllib.request, tempfile
+    font_file = "/tmp/mono.ttf"
+    if not os.path.exists(font_file):
         try:
-            font = ImageFont.truetype(font_path, FONT_SIZE)
-            title_font = ImageFont.truetype(font_path, 18)
-            break
+            urllib.request.urlretrieve(
+                "https://github.com/google/fonts/raw/main/apache/roboto/static/RobotoMono-Regular.ttf",
+                font_file
+            )
         except:
-            continue
-    if font is None:
+            font_file = None
+
+    try:
+        font = ImageFont.truetype(font_file, FONT_SIZE) if font_file else ImageFont.load_default()
+        title_font = ImageFont.truetype(font_file, 18) if font_file else font
+    except:
         font = ImageFont.load_default()
         title_font = font
 
