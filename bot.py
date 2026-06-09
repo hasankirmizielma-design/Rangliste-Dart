@@ -263,19 +263,33 @@ def get_tabelle():
 
 def generate_tabelle_image(tabelle, title):
     """Generiert die Tabelle als Bild."""
-    FONT_PATH = "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf"
     FONT_SIZE = 16
     PADDING = 16
     ROW_HEIGHT = 24
-    BG_COLOR = (44, 47, 51)       # Discord Dunkel
+    BG_COLOR = (44, 47, 51)
     HEADER_COLOR = (255, 255, 255)
     ROW_COLOR = (220, 220, 220)
     ALT_ROW_COLOR = (180, 180, 180)
     SEP_COLOR = (100, 100, 100)
     TITLE_COLOR = (255, 255, 255)
 
-    font = ImageFont.truetype(FONT_PATH, FONT_SIZE)
-    title_font = ImageFont.truetype(FONT_PATH, 18)
+    # Font laden - versuche Systemfonts, fallback auf Standard
+    font = None
+    title_font = None
+    for font_path in [
+        "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
+        "/usr/share/fonts/truetype/liberation/LiberationMono-Regular.ttf",
+        "/usr/share/fonts/truetype/ubuntu/UbuntuMono-R.ttf",
+    ]:
+        try:
+            font = ImageFont.truetype(font_path, FONT_SIZE)
+            title_font = ImageFont.truetype(font_path, 18)
+            break
+        except:
+            continue
+    if font is None:
+        font = ImageFont.load_default()
+        title_font = font
 
     # Spalten definieren
     cols = ["Rg", "Name", "Sp", "S", "N", "L+", "L-", "Dif", "Pkt"]
