@@ -491,7 +491,7 @@ async def on_message(message):
             await message.channel.send(msg)
         except Exception as e:
             print("❌ TABELLE CMD ERROR:", e)
-            await message.channel.send("❌ Fehler beim Laden der Tabelle.")
+            await message.channel.send(f"❌ Fehler beim Laden der Tabelle: `{e}`")
         return
 
     if content.lower().startswith("!top") or content.lower().startswith("!rangliste"):
