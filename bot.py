@@ -501,7 +501,9 @@ async def on_message(message):
     is_stats_channel = message.channel.id == STATS_CHANNEL_ID
     is_main_channel = message.channel.name == CHANNEL_NAME
 
-    if not is_main_channel and not is_stats_channel:
+    is_spielabsprachen = message.channel.id == LOG_CHANNEL_ID
+
+    if not is_main_channel and not is_stats_channel and not is_spielabsprachen:
         return
 
     reset_daily()
