@@ -1262,31 +1262,23 @@ Wendet euch an die Admins 🙂"""
 
             anstehend.sort(key=lambda x: x[1])
 
-            msg = "📅 **Urlaubs-Übersicht**
-
-"
+            msg = "📅 **Urlaubs-Uebersicht**\n\n"
 
             if aktuell:
-                msg += "🏖️ **Gerade weg:**
-"
+                msg += "🏖️ **Gerade weg:**\n"
                 for name, von, bis in aktuell:
-                    msg += f"• {name}: {von.strftime('%d.%m.')} – {bis.strftime('%d.%m.%Y')}
-"
+                    msg += f"• {name}: {von.strftime('%d.%m.')} - {bis.strftime('%d.%m.%Y')}\n"
             else:
-                msg += "🏖️ **Gerade weg:** Niemand
-"
+                msg += "🏖️ **Gerade weg:** Niemand\n"
 
-            msg += "
-"
+            msg += "\n"
 
             if anstehend:
-                msg += "📆 **Demnächst weg:**
-"
+                msg += "📆 **Demnaechst weg:**\n"
                 for name, von, bis in anstehend:
-                    msg += f"• {name}: {von.strftime('%d.%m.')} – {bis.strftime('%d.%m.%Y')}
-"
+                    msg += f"• {name}: {von.strftime('%d.%m.')} - {bis.strftime('%d.%m.%Y')}\n"
             else:
-                msg += "📆 **Demnächst weg:** Keine geplanten Urlaube"
+                msg += "📆 **Demnaechst weg:** Keine geplanten Urlaube"
 
             await message.channel.send(msg)
         except Exception as e:
