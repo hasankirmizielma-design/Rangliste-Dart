@@ -20,6 +20,8 @@ LOG_CHANNEL_ID = 1492394175906320605
 STATS_CHANNEL_ID = 1513493210910167170
 TABELLE_CHANNEL_ID = 1492394072369922118
 SPIELER_INFO_CHANNEL_ID = 1514183688445759509
+ABWESENHEIT_CHANNEL_ID = 1465638993415770286
+GEBURTSTAGE_CHANNEL_ID = 1514226619231899708
 CHANNEL_NAME = "bullseye-rangliste-ergebnisse"
 MAX_MATCHES_PER_DAY = 5
 LANZI_NAME = "lanzi_90"
@@ -433,6 +435,52 @@ async def tabelle_scheduler():
         await post_tabelle()
 
 
+async def geburtstag_checker():
+    """Prüft täglich um 09:00 Uhr ob jemand Geburtstag hat."""
+    await client.wait_until_ready()
+    from datetime import timedelta
+    while not client.is_closed():
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        # 09:00 Uhr DE = 07:00 UTC
+        next_check = now.replace(hour=7, minute=0, second=0, microsecond=0)
+        if next_check <= now:
+            next_check += timedelta(days=1)
+        await asyncio.sleep((next_check - now).total_seconds())
+
+        try:
+            wb = gs_client.open_by_key("19Ax_hj9exjwfM6NPyw9JBL2ad3qW1_LOkMHddJ6stlc")
+            try:
+                gb_sheet = wb.worksheet("Geburtstage")
+            except:
+                continue
+
+            today = datetime.now()
+            rows = gb_sheet.get_all_values()
+            channel = await client.fetch_channel(GEBURTSTAGE_CHANNEL_ID)
+
+            for row in rows[1:]:
+                if len(row) < 3:
+                    continue
+                try:
+                    name = row[0]
+                    tag = int(row[1])
+                    monat = int(row[2])
+                    if tag == today.day and monat == today.month:
+                        sprueche = [
+                            f"🎂 Alles Gute zum Geburtstag, **{name}**! Möge deine Trefferquote heute so hoch sein wie deine Laune! 🎯🎉",
+                            f"🎉 Happy Birthday, **{name}**! Ein weiteres Jahr älter, aber hoffentlich nicht schlechter am Board! 🎂",
+                            f"🎂 **{name}** hat heute Geburtstag! Wir wünschen dir alles Gute und viele Bullseyes! 🎯",
+                            f"🥳 Herzlichen Glückwunsch, **{name}**! Heute darfst du verlieren ohne Ausrede! 😂🎂",
+                        ]
+                        await channel.send(random.choice(sprueche))
+                except:
+                    continue
+        except Exception as e:
+            print("❌ GEBURTSTAG CHECKER ERROR:", e)
+
+        await asyncio.sleep(60)
+
+
 async def midnight_auswertung():
     """Läuft täglich um Mitternacht und postet Tagesauswertung."""
     await client.wait_until_ready()
@@ -487,6 +535,7 @@ async def on_ready():
 
     client.loop.create_task(midnight_auswertung())
     client.loop.create_task(tabelle_scheduler())
+    client.loop.create_task(geburtstag_checker())
 
 
 # =========================
@@ -505,8 +554,10 @@ async def on_message(message):
 
     is_spielabsprachen = message.channel.id == LOG_CHANNEL_ID
     is_spieler_info = message.channel.id == SPIELER_INFO_CHANNEL_ID
+    is_abwesenheit = message.channel.id == ABWESENHEIT_CHANNEL_ID
+    is_geburtstage = message.channel.id == GEBURTSTAGE_CHANNEL_ID
 
-    if not is_main_channel and not is_stats_channel and not is_spielabsprachen and not is_spieler_info:
+    if not is_main_channel and not is_stats_channel and not is_spielabsprachen and not is_spieler_info and not is_abwesenheit and not is_geburtstage:
         return
 
     reset_daily()
@@ -1102,6 +1153,194 @@ Wendet euch an die Admins 🙂"""
             else:
                 msg = f"🎯 **Verfuegbare Gegner heute:**\n" + "\n".join(verfuegbar)
                 await message.channel.send(msg)
+        except Exception as e:
+            await message.channel.send(f"❌ Fehler: `{e}`")
+        return
+
+    # =========================
+    # URLAUB COMMANDS
+    # =========================
+    if content.lower().startswith("!urlaub") and not content.lower().startswith("!urlaube"):
+        if not is_abwesenheit:
+            return
+
+        spieler = message.author.display_name
+
+        # Löschen
+        if "löschen" in content.lower() or "loeschen" in content.lower():
+            try:
+                wb = gs_client.open_by_key("19Ax_hj9exjwfM6NPyw9JBL2ad3qW1_LOkMHddJ6stlc")
+                try:
+                    urlaub_sheet = wb.worksheet("Urlaube")
+                except:
+                    await message.channel.send("❌ Keine Urlaube gefunden.")
+                    return
+
+                rows = urlaub_sheet.get_all_values()
+                deleted = 0
+                for i, row in enumerate(reversed(rows)):
+                    if len(row) >= 1 and normalize(row[0]) == normalize(spieler):
+                        urlaub_sheet.delete_rows(len(rows) - i)
+                        deleted += 1
+
+                if deleted:
+                    await message.channel.send(f"✅ Urlaub von **{spieler}** wurde gelöscht.")
+                else:
+                    await message.channel.send(f"❌ Kein Urlaub von **{spieler}** gefunden.")
+            except Exception as e:
+                await message.channel.send(f"❌ Fehler: `{e}`")
+            return
+
+        # Eintragen: !urlaub 20.06 - 30.06
+        parts = content.split(None, 1)
+        if len(parts) < 2:
+            await message.channel.send("❌ Nutzung: `!urlaub 20.06 - 30.06`")
+            return
+
+        datum_str = parts[1].strip()
+        try:
+            # Datum parsen
+            import re as re2
+            dates = re2.findall(r"(\d{1,2})[.\-/](\d{1,2})(?:[.\-/](\d{2,4}))?", datum_str)
+            if len(dates) < 2:
+                await message.channel.send("❌ Nutzung: `!urlaub 20.06 - 30.06`")
+                return
+
+            from datetime import datetime as dt
+            year = datetime.now().year
+            d1 = dates[0]
+            d2 = dates[1]
+            von = dt(int(d1[2]) if d1[2] else year, int(d1[1]), int(d1[0]))
+            bis = dt(int(d2[2]) if d2[2] else year, int(d2[1]), int(d2[0]))
+
+            von_str = von.strftime("%d.%m.%Y")
+            bis_str = bis.strftime("%d.%m.%Y")
+
+            wb = gs_client.open_by_key("19Ax_hj9exjwfM6NPyw9JBL2ad3qW1_LOkMHddJ6stlc")
+            try:
+                urlaub_sheet = wb.worksheet("Urlaube")
+            except:
+                urlaub_sheet = wb.add_worksheet(title="Urlaube", rows=200, cols=5)
+                urlaub_sheet.update("A1", [["Spieler", "Von", "Bis"]])
+
+            urlaub_sheet.append_row([spieler, von_str, bis_str])
+            await message.channel.send(
+                f"✅ Urlaub eingetragen!
+"
+                f"👤 **{spieler}**
+"
+                f"📅 {von_str} – {bis_str}"
+            )
+        except Exception as e:
+            await message.channel.send(f"❌ Fehler beim Eintragen: `{e}`")
+        return
+
+    if content.lower().startswith("!urlaube"):
+        if not is_abwesenheit:
+            return
+        try:
+            wb = gs_client.open_by_key("19Ax_hj9exjwfM6NPyw9JBL2ad3qW1_LOkMHddJ6stlc")
+            try:
+                urlaub_sheet = wb.worksheet("Urlaube")
+            except:
+                await message.channel.send("📅 Noch keine Urlaube eingetragen.")
+                return
+
+            rows = urlaub_sheet.get_all_values()
+            from datetime import datetime as dt
+            today = dt.now().date()
+            aktuell = []
+            anstehend = []
+
+            for row in rows[1:]:
+                if len(row) < 3:
+                    continue
+                try:
+                    von = dt.strptime(row[1], "%d.%m.%Y").date()
+                    bis = dt.strptime(row[2], "%d.%m.%Y").date()
+                    name = row[0]
+                    if von <= today <= bis:
+                        aktuell.append((name, von, bis))
+                    elif von > today:
+                        anstehend.append((name, von, bis))
+                except:
+                    continue
+
+            anstehend.sort(key=lambda x: x[1])
+
+            msg = "📅 **Urlaubs-Übersicht**
+
+"
+
+            if aktuell:
+                msg += "🏖️ **Gerade weg:**
+"
+                for name, von, bis in aktuell:
+                    msg += f"• {name}: {von.strftime('%d.%m.')} – {bis.strftime('%d.%m.%Y')}
+"
+            else:
+                msg += "🏖️ **Gerade weg:** Niemand
+"
+
+            msg += "
+"
+
+            if anstehend:
+                msg += "📆 **Demnächst weg:**
+"
+                for name, von, bis in anstehend:
+                    msg += f"• {name}: {von.strftime('%d.%m.')} – {bis.strftime('%d.%m.%Y')}
+"
+            else:
+                msg += "📆 **Demnächst weg:** Keine geplanten Urlaube"
+
+            await message.channel.send(msg)
+        except Exception as e:
+            await message.channel.send(f"❌ Fehler: `{e}`")
+        return
+
+    # =========================
+    # GEBURTSTAG COMMANDS
+    # =========================
+    if content.lower().startswith("!geburtstag"):
+        if not is_geburtstage:
+            return
+
+        spieler = message.author.display_name
+        parts = content.split(None, 1)
+
+        if len(parts) < 2:
+            await message.channel.send("❌ Nutzung: `!geburtstag 15.03`")
+            return
+
+        datum_str = parts[1].strip()
+        try:
+            import re as re3
+            dates = re3.findall(r"(\d{1,2})[.\-/](\d{1,2})", datum_str)
+            if not dates:
+                await message.channel.send("❌ Nutzung: `!geburtstag 15.03`")
+                return
+
+            tag = int(dates[0][0])
+            monat = int(dates[0][1])
+
+            wb = gs_client.open_by_key("19Ax_hj9exjwfM6NPyw9JBL2ad3qW1_LOkMHddJ6stlc")
+            try:
+                gb_sheet = wb.worksheet("Geburtstage")
+            except:
+                gb_sheet = wb.add_worksheet(title="Geburtstage", rows=200, cols=3)
+                gb_sheet.update("A1", [["Spieler", "Tag", "Monat"]])
+
+            # Prüfen ob schon vorhanden
+            rows = gb_sheet.get_all_values()
+            for i, row in enumerate(rows):
+                if len(row) >= 1 and normalize(row[0]) == normalize(spieler):
+                    gb_sheet.update(f"A{i+1}", [[spieler, str(tag), str(monat)]])
+                    await message.channel.send(f"✅ Geburtstag von **{spieler}** aktualisiert: {tag:02d}.{monat:02d} 🎂")
+                    return
+
+            gb_sheet.append_row([spieler, str(tag), str(monat)])
+            await message.channel.send(f"✅ Geburtstag eingetragen: **{spieler}** am {tag:02d}.{monat:02d} 🎂")
         except Exception as e:
             await message.channel.send(f"❌ Fehler: `{e}`")
         return
