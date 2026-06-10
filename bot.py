@@ -19,6 +19,7 @@ TOKEN = os.getenv("TOKEN")
 LOG_CHANNEL_ID = 1492394175906320605
 STATS_CHANNEL_ID = 1513493210910167170
 TABELLE_CHANNEL_ID = 1492394072369922118
+SPIELER_INFO_CHANNEL_ID = 1514183688445759509
 CHANNEL_NAME = "bullseye-rangliste-ergebnisse"
 MAX_MATCHES_PER_DAY = 5
 LANZI_NAME = "lanzi_90"
@@ -526,8 +527,9 @@ async def on_message(message):
     is_main_channel = message.channel.name == CHANNEL_NAME
 
     is_spielabsprachen = message.channel.id == LOG_CHANNEL_ID
+    is_spieler_info = message.channel.id == SPIELER_INFO_CHANNEL_ID
 
-    if not is_main_channel and not is_stats_channel and not is_spielabsprachen:
+    if not is_main_channel and not is_stats_channel and not is_spielabsprachen and not is_spieler_info:
         return
 
     reset_daily()
@@ -963,7 +965,7 @@ async def on_message(message):
     # USER COMMANDS (nur in Spielabsprachen)
     # =========================
     if content.lower().startswith("!hilfe"):
-        if not is_spielabsprachen:
+        if not (message.channel.id == SPIELER_INFO_CHANNEL_ID):
             return
         hilfe_text = """🎯 MANFRED – EUER DART-BOT 🎯
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -1021,7 +1023,7 @@ Wendet euch an die Admins 🙂"""
         return
 
     if content.lower().startswith("!quote"):
-        if not (message.channel.id == LOG_CHANNEL_ID):
+        if not (message.channel.id == SPIELER_INFO_CHANNEL_ID):
             return
         quotes = [
             "🎯 Ein schlechter Tag am Dartboard ist besser als ein guter Tag ohne Dart!",
@@ -1039,7 +1041,7 @@ Wendet euch an die Admins 🙂"""
         return
 
     if content.lower().startswith("!ich"):
-        if not (message.channel.id == LOG_CHANNEL_ID):
+        if not (message.channel.id == SPIELER_INFO_CHANNEL_ID):
             return
         spieler = message.author.display_name
         try:
@@ -1066,7 +1068,7 @@ Wendet euch an die Admins 🙂"""
         return
 
     if content.lower().startswith("!ziel"):
-        if not (message.channel.id == LOG_CHANNEL_ID):
+        if not (message.channel.id == SPIELER_INFO_CHANNEL_ID):
             return
         spieler = message.author.display_name
         try:
@@ -1110,7 +1112,7 @@ Wendet euch an die Admins 🙂"""
         return
 
     if content.lower().startswith("!naechster") or content.lower().startswith("!nächster"):
-        if not (message.channel.id == LOG_CHANNEL_ID):
+        if not (message.channel.id == SPIELER_INFO_CHANNEL_ID):
             return
         try:
             verfuegbar = []
