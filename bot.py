@@ -1224,13 +1224,7 @@ Wendet euch an die Admins 🙂"""
                 urlaub_sheet.update("A1", [["Spieler", "Von", "Bis"]])
 
             urlaub_sheet.append_row([spieler, von_str, bis_str])
-            await message.channel.send(
-                f"✅ Urlaub eingetragen!
-"
-                f"👤 **{spieler}**
-"
-                f"📅 {von_str} – {bis_str}"
-            )
+            await message.channel.send(f"✅ Urlaub eingetragen!\n👤 **{spieler}**\n📅 {von_str} - {bis_str}")
         except Exception as e:
             await message.channel.send(f"❌ Fehler beim Eintragen: `{e}`")
         return
