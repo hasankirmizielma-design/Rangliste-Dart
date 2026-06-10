@@ -485,29 +485,6 @@ async def midnight_auswertung():
 async def on_ready():
     print(f"✅ Online als {client.user}")
 
-    # Heutige Spiele aus Sheet laden um Counter wiederherzustellen
-    try:
-        from datetime import date as date_cls
-        rows = sheet.get_all_values()
-        today_str = date_cls.today().strftime("%Y-%m-%d")
-        for row in rows:
-            if len(row) < 7:
-                continue
-            # Spalte H (index 7) = Datum falls vorhanden, sonst alle laden
-            p1 = row[0].strip()
-            p2 = row[1].strip()
-            if not p1 or p1.lower() == "spieler a":
-                continue
-            match_count[normalize(p1)] += 1
-            match_count[normalize(p2)] += 1
-        # Auf max begrenzen
-        for k in match_count:
-            if match_count[k] > MAX_MATCHES_PER_DAY:
-                match_count[k] = MAX_MATCHES_PER_DAY
-        print(f"✅ Counter wiederhergestellt: {dict(match_count)}")
-    except Exception as e:
-        print(f"❌ Counter-Restore Fehler: {e}")
-
     client.loop.create_task(midnight_auswertung())
     client.loop.create_task(tabelle_scheduler())
 
