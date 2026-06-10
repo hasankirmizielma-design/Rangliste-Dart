@@ -600,6 +600,84 @@ async def on_message(message):
     # =========================
     # !top — Rangliste Top 10
     # =========================
+    # =========================
+    # !h2h @Spieler1 @Spieler2
+    # =========================
+    if content.lower().startswith("!h2h"):
+        if not is_stats_channel:
+            return
+
+        if len(message.mentions) < 2:
+            await message.channel.send("❌ Nutzung: `!h2h @Spieler1 @Spieler2`")
+            return
+
+        p1 = message.mentions[0].display_name
+        p2 = message.mentions[1].display_name
+
+        try:
+            rows = sheet.get_all_values()
+            p1_wins = 0
+            p2_wins = 0
+            p1_legs = 0
+            p2_legs = 0
+            total = 0
+
+            for row in rows:
+                if len(row) < 7:
+                    continue
+                ra = row[0].strip()
+                rb = row[1].strip()
+                winner = row[6].strip()
+                if ra.lower() == "spieler a":
+                    continue
+
+                # Pruefen ob beide Spieler in dieser Zeile sind
+                if (normalize(ra) == normalize(p1) and normalize(rb) == normalize(p2)) or                    (normalize(ra) == normalize(p2) and normalize(rb) == normalize(p1)):
+                    total += 1
+                    try:
+                        legs_a = int(row[2])
+                        legs_b = int(row[3])
+                    except:
+                        continue
+
+                    if normalize(ra) == normalize(p1):
+                        p1_legs += legs_a
+                        p2_legs += legs_b
+                    else:
+                        p1_legs += legs_b
+                        p2_legs += legs_a
+
+                    if normalize(winner) == normalize(p1):
+                        p1_wins += 1
+                    elif normalize(winner) == normalize(p2):
+                        p2_wins += 1
+
+            if total == 0:
+                await message.channel.send(f"❌ Keine Spiele zwischen {p1} und {p2} gefunden.")
+                return
+
+            p1_wr = round(p1_wins / total * 100, 1) if total > 0 else 0
+            p2_wr = round(p2_wins / total * 100, 1) if total > 0 else 0
+
+            leader = p1 if p1_wins > p2_wins else (p2 if p2_wins > p1_wins else None)
+
+            msg = f"⚔️ **Head-to-Head: {p1} vs {p2}**\n\n"
+            msg += f"🎮 Duelle gesamt: {total}\n\n"
+            msg += f"🏆 {p1}: {p1_wins} Siege ({p1_wr}%) | Legs: {p1_legs}\n"
+            msg += f"🏆 {p2}: {p2_wins} Siege ({p2_wr}%) | Legs: {p2_legs}\n\n"
+
+            if leader:
+                msg += f"👑 Fuehrt die Rivalitaet: **{leader}**"
+            else:
+                msg += f"🤝 Ausgeglichen!"
+
+            await message.channel.send(msg)
+
+        except Exception as e:
+            print("❌ H2H ERROR:", e)
+            await message.channel.send(f"❌ Fehler beim Laden der H2H-Daten: `{e}`")
+        return
+
     if content.lower().startswith("!tabelle"):
         if not is_stats_channel:
             return
@@ -692,6 +770,68 @@ async def on_message(message):
         except Exception as e:
             print("❌ UNDO ERROR:", e)
             await message.channel.send("❌ Fehler beim Löschen.")
+        return
+
+    # =========================
+    # !saisonreset
+    # =========================
+    if content.lower().startswith("!saisonreset"):
+        if not is_admin(message.author):
+            await message.channel.send("⛔ Nur Admins duerfen das.")
+            return
+
+        if "confirm" not in content.lower():
+            await message.channel.send(
+                "⚠️ **Saisonreset!**\n"
+                "Alle Ergebnisse werden archiviert und geloescht.\n"
+                "Zum Bestaetigen: `!saisonreset confirm`"
+            )
+            return
+
+        try:
+            await message.channel.send("⏳ Saisonreset wird durchgefuehrt...")
+
+            # Alle Daten aus Ergebnisse-Sheet lesen
+            all_rows = sheet.get_all_values()
+
+            if len(all_rows) <= 1:
+                await message.channel.send("❌ Keine Daten zum Archivieren vorhanden.")
+                return
+
+            # Archiv-Worksheet erstellen
+            from datetime import datetime
+            archiv_name = f"Archiv_{datetime.now().strftime('%B_%Y')}"
+
+            wb = gs_client.open_by_key("19Ax_hj9exjwfM6NPyw9JBL2ad3qW1_LOkMHddJ6stlc")
+
+            # Pruefen ob Archiv schon existiert
+            try:
+                archiv_sheet = wb.worksheet(archiv_name)
+            except:
+                archiv_sheet = wb.add_worksheet(title=archiv_name, rows=1000, cols=20)
+
+            # Daten ins Archiv kopieren (inkl. Header)
+            archiv_sheet.clear()
+            archiv_sheet.update("A1", all_rows)
+
+            # Ergebnisse-Sheet leeren aber Zeile 1 (Header) behalten
+            header = all_rows[0]
+            sheet.clear()
+            sheet.update("A1", [header])
+
+            # Formeln in Spalte G wiederherstellen fuer neue Zeilen
+            # (Formel aus Zeile 1 beibehalten, Rest leer)
+
+            await message.channel.send(
+                f"✅ **Saisonreset abgeschlossen!**\n"
+                f"📁 Archiviert als: `{archiv_name}` ({len(all_rows)-1} Spiele)\n"
+                f"🗑️ Ergebnisse-Sheet wurde geleert.\n"
+                f"🚀 Neue Saison kann beginnen!"
+            )
+
+        except Exception as e:
+            print("❌ SAISONRESET ERROR:", e)
+            await message.channel.send(f"❌ Fehler beim Saisonreset: `{e}`")
         return
 
     # Ab hier nur im Hauptchannel
