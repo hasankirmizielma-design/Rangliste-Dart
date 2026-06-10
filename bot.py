@@ -5,7 +5,7 @@ import json
 import random
 import io
 from collections import defaultdict
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 import asyncio
 from PIL import Image, ImageDraw, ImageFont
 
@@ -415,7 +415,7 @@ async def tabelle_scheduler():
     post_times_utc = [((h - UTC_OFFSET) % 24, m) for h, m in post_times_local]
 
     while not client.is_closed():
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
         next_post = None
         for hour, minute in sorted(post_times_utc):
             candidate = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
