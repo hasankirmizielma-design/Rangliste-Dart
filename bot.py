@@ -607,12 +607,16 @@ async def on_message(message):
         if not is_stats_channel:
             return
 
-        if len(message.mentions) < 2:
-            await message.channel.send("❌ Nutzung: `!h2h @Spieler1 @Spieler2`")
+        parts = content.split()
+        if message.mentions and len(message.mentions) >= 2:
+            p1 = message.mentions[0].display_name
+            p2 = message.mentions[1].display_name
+        elif len(parts) >= 3:
+            p1 = parts[1]
+            p2 = parts[2]
+        else:
+            await message.channel.send("❌ Nutzung: `!h2h Spieler1 Spieler2`")
             return
-
-        p1 = message.mentions[0].display_name
-        p2 = message.mentions[1].display_name
 
         try:
             rows = sheet.get_all_values()
