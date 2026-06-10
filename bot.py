@@ -777,6 +777,102 @@ async def on_message(message):
         return
 
     # =========================
+    # !rename AlterName NeuerName
+    # =========================
+    if content.lower().startswith("!rename"):
+        if not is_admin(message.author):
+            await message.channel.send("⛔ Nur Admins duerfen das.")
+            return
+
+        parts = content.split()
+        if len(parts) < 3:
+            await message.channel.send("❌ Nutzung: `!rename AlterName NeuerName`")
+            return
+
+        alter_name = parts[1].strip()
+        neuer_name = parts[2].strip()
+
+        try:
+            rows = sheet.get_all_values()
+            count = 0
+            for i, row in enumerate(rows):
+                updated = False
+                new_row = list(row)
+                for j, cell in enumerate(new_row):
+                    if normalize(cell) == normalize(alter_name):
+                        new_row[j] = neuer_name
+                        updated = True
+                if updated:
+                    sheet.update(f"A{i+1}", [new_row])
+                    count += 1
+
+            if count == 0:
+                await message.channel.send(f"❌ Kein Spieler mit Namen `{alter_name}` gefunden.")
+            else:
+                await message.channel.send(
+                    f"✅ `{alter_name}` wurde in `{neuer_name}` umbenannt.\n"
+                    f"📝 {count} Zeilen aktualisiert."
+                )
+        except Exception as e:
+            print("❌ RENAME ERROR:", e)
+            await message.channel.send(f"❌ Fehler beim Umbenennen: `{e}`")
+        return
+
+    # =========================
+    # !delete @Spieler oder !delete Name
+    # =========================
+    if content.lower().startswith("!delete"):
+        if not is_admin(message.author):
+            await message.channel.send("⛔ Nur Admins duerfen das.")
+            return
+
+        if message.mentions:
+            spieler = message.mentions[0].display_name
+        else:
+            parts = content.split(None, 1)
+            if len(parts) < 2:
+                await message.channel.send("❌ Nutzung: `!delete @Spieler` oder `!delete Name`")
+                return
+            spieler = parts[1].strip()
+
+        if "confirm" not in content.lower():
+            await message.channel.send(
+                f"⚠️ Alle Eintraege von **{spieler}** werden geloescht!\n"
+                f"Zum Bestaetigen: `!delete {spieler} confirm`"
+            )
+            return
+
+        # confirm entfernen aus spieler name falls drin
+        spieler = spieler.replace(" confirm", "").replace("confirm", "").strip()
+
+        try:
+            rows = sheet.get_all_values()
+            to_delete = []
+
+            for i, row in enumerate(rows):
+                if len(row) < 2:
+                    continue
+                if normalize(row[0]) == normalize(spieler) or normalize(row[1]) == normalize(spieler):
+                    to_delete.append(i + 1)  # 1-basiert
+
+            if not to_delete:
+                await message.channel.send(f"❌ Keine Eintraege fuer `{spieler}` gefunden.")
+                return
+
+            # Von unten nach oben löschen damit Indizes stimmen
+            for row_idx in reversed(to_delete):
+                sheet.delete_rows(row_idx)
+
+            await message.channel.send(
+                f"🗑️ **{spieler}** wurde geloescht.\n"
+                f"📝 {len(to_delete)} Eintraege entfernt."
+            )
+        except Exception as e:
+            print("❌ DELETE ERROR:", e)
+            await message.channel.send(f"❌ Fehler beim Loeschen: `{e}`")
+        return
+
+    # =========================
     # !saisonreset
     # =========================
     if content.lower().startswith("!saisonreset"):
@@ -836,6 +932,116 @@ async def on_message(message):
         except Exception as e:
             print("❌ SAISONRESET ERROR:", e)
             await message.channel.send(f"❌ Fehler beim Saisonreset: `{e}`")
+        return
+
+    # =========================
+    # USER COMMANDS (nur in Spielabsprachen)
+    # =========================
+    if content.lower().startswith("!quote"):
+        if not (message.channel.id == LOG_CHANNEL_ID):
+            return
+        quotes = [
+            "🎯 Ein schlechter Tag am Dartboard ist besser als ein guter Tag ohne Dart!",
+            "🎯 Uebung macht den Meister — wirf einfach weiter!",
+            "🎯 Jeder Profi war mal ein Anfaenger. Heute koennte dein Tag sein!",
+            "🎯 Dart ist 10% Talent und 90% nicht aufhoeren zu ueben!",
+            "🎯 Die Scheibe wartet auf dich. Sie hat Angst. 😏",
+            "🎯 Niederlagen sind Lektionen. Siege sind Belohnungen. Beides macht dich besser!",
+            "🎯 Ein Pfeil kann alles veraendern. Wirf ihn!",
+            "🎯 Champions werden nicht geboren — sie werden geworfen! 💪",
+            "🎯 Glaub an deinen Arm, auch wenn die Scheibe das noch nicht tut!",
+            "🎯 Heute verloren? Morgen gewonnen. So laeuft das hier!",
+        ]
+        await message.channel.send(random.choice(quotes))
+        return
+
+    if content.lower().startswith("!ich"):
+        if not (message.channel.id == LOG_CHANNEL_ID):
+            return
+        spieler = message.author.display_name
+        try:
+            stats = get_stats_from_sheet()
+            s = None
+            for k, v in stats.items():
+                if normalize(k) == normalize(spieler):
+                    s = v
+                    break
+            if not s or s["spiele"] == 0:
+                await message.channel.send(f"❌ Keine Daten fuer {spieler} gefunden.")
+                return
+            winrate = round(s["siege"] / s["spiele"] * 100, 1)
+            msg = (
+                f"📊 **Deine Stats, {spieler}**\n"
+                f"🎮 Spiele gesamt: {s['spiele']}\n"
+                f"🏆 Siege: {s['siege']}\n"
+                f"💀 Niederlagen: {s['niederlagen']}\n"
+                f"📈 Win-Rate: {winrate}%"
+            )
+            await message.channel.send(msg)
+        except Exception as e:
+            await message.channel.send(f"❌ Fehler: `{e}`")
+        return
+
+    if content.lower().startswith("!ziel"):
+        if not (message.channel.id == LOG_CHANNEL_ID):
+            return
+        spieler = message.author.display_name
+        try:
+            stats = get_stats_from_sheet()
+            s = None
+            for k, v in stats.items():
+                if normalize(k) == normalize(spieler):
+                    s = v
+                    break
+            if not s or s["spiele"] == 0:
+                await message.channel.send(f"❌ Keine Daten fuer {spieler} gefunden.")
+                return
+
+            msg = f"🎯 **Naechste Meilensteine fuer {spieler}:**\n\n"
+
+            # Spiele-Meilensteine
+            naechstes_spiel_ziel = None
+            for m in sorted(SPIELE_MEILENSTEINE.keys()):
+                if s["spiele"] < m:
+                    naechstes_spiel_ziel = m
+                    break
+            if naechstes_spiel_ziel:
+                msg += f"🎮 Spiele: noch **{naechstes_spiel_ziel - s['spiele']}** bis zum {naechstes_spiel_ziel}-Spiele-Meilenstein\n"
+            else:
+                msg += f"🎮 Spiele: Alle Meilensteine erreicht! 👑\n"
+
+            # Siege-Meilensteine
+            naechstes_sieg_ziel = None
+            for m in sorted(SIEGE_MEILENSTEINE.keys()):
+                if s["siege"] < m:
+                    naechstes_sieg_ziel = m
+                    break
+            if naechstes_sieg_ziel:
+                msg += f"🏆 Siege: noch **{naechstes_sieg_ziel - s['siege']}** bis zum {naechstes_sieg_ziel}-Siege-Meilenstein\n"
+            else:
+                msg += f"🏆 Siege: Alle Meilensteine erreicht! 👑\n"
+
+            await message.channel.send(msg)
+        except Exception as e:
+            await message.channel.send(f"❌ Fehler: `{e}`")
+        return
+
+    if content.lower().startswith("!naechster") or content.lower().startswith("!nächster"):
+        if not (message.channel.id == LOG_CHANNEL_ID):
+            return
+        try:
+            verfuegbar = []
+            for player, count in match_count.items():
+                if count < MAX_MATCHES_PER_DAY and normalize(player) != normalize(message.author.display_name):
+                    verfuegbar.append(f"• {player} ({MAX_MATCHES_PER_DAY - count} Spiele übrig)")
+
+            if not verfuegbar:
+                await message.channel.send("😴 Heute hat niemand mehr Spiele übrig!")
+            else:
+                msg = f"🎯 **Verfuegbare Gegner heute:**\n" + "\n".join(verfuegbar)
+                await message.channel.send(msg)
+        except Exception as e:
+            await message.channel.send(f"❌ Fehler: `{e}`")
         return
 
     # Ab hier nur im Hauptchannel
