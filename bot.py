@@ -411,7 +411,7 @@ async def tabelle_scheduler():
     # UTC Zeiten für 07:00, 14:00, 22:00 Europe/Berlin (UTC+2 im Sommer, UTC+1 im Winter)
     # Wir rechnen mit UTC+2 (Sommerzeit)
     UTC_OFFSET = 2
-    post_times_local = [(7, 0), (14, 0), (22, 0)]
+    post_times_local = [(7, 0), (14, 0), (18, 0), (22, 0)]
     post_times_utc = [((h - UTC_OFFSET) % 24, m) for h, m in post_times_local]
 
     while not client.is_closed():
@@ -483,6 +483,30 @@ async def midnight_auswertung():
 @client.event
 async def on_ready():
     print(f"✅ Online als {client.user}")
+
+    # Heutige Spiele aus Sheet laden um Counter wiederherzustellen
+    try:
+        from datetime import date as date_cls
+        rows = sheet.get_all_values()
+        today_str = date_cls.today().strftime("%Y-%m-%d")
+        for row in rows:
+            if len(row) < 7:
+                continue
+            # Spalte H (index 7) = Datum falls vorhanden, sonst alle laden
+            p1 = row[0].strip()
+            p2 = row[1].strip()
+            if not p1 or p1.lower() == "spieler a":
+                continue
+            match_count[normalize(p1)] += 1
+            match_count[normalize(p2)] += 1
+        # Auf max begrenzen
+        for k in match_count:
+            if match_count[k] > MAX_MATCHES_PER_DAY:
+                match_count[k] = MAX_MATCHES_PER_DAY
+        print(f"✅ Counter wiederhergestellt: {dict(match_count)}")
+    except Exception as e:
+        print(f"❌ Counter-Restore Fehler: {e}")
+
     client.loop.create_task(midnight_auswertung())
     client.loop.create_task(tabelle_scheduler())
 
@@ -901,7 +925,6 @@ async def on_message(message):
                 return
 
             # Archiv-Worksheet erstellen
-            from datetime import datetime
             archiv_name = f"Archiv_{datetime.now().strftime('%B_%Y')}"
 
             wb = gs_client.open_by_key("19Ax_hj9exjwfM6NPyw9JBL2ad3qW1_LOkMHddJ6stlc")
@@ -939,6 +962,64 @@ async def on_message(message):
     # =========================
     # USER COMMANDS (nur in Spielabsprachen)
     # =========================
+    if content.lower().startswith("!hilfe"):
+        if not is_spielabsprachen:
+            return
+        hilfe_text = """🎯 MANFRED – EUER DART-BOT 🎯
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📋 ERGEBNIS EINTRAGEN
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Schreibt einfach so:
+@Spieler1 vs @Spieler2 3:1
+
+⚠️ WICHTIG:
+- Beide Spieler MÜSSEN mit @ markiert werden
+- Jeder hat nur 5 Spiele pro Tag
+- Funktioniert auch mit: vs. | gegen | (3:1) | 3-1
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🤖 MEINE KOMMANDOS (hier eingeben)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+!ich
+→ Zeigt deine eigenen Stats (Siege, Niederlagen, Win-Rate)
+   Einfach tippen — der Bot erkennt dich automatisch!
+
+!ziel
+→ Zeigt wie viele Spiele/Siege du noch bis zur nächsten
+   Auszeichnung brauchst 🏆
+
+!nächster
+→ Zeigt wer heute noch Spiele übrig hat
+   Perfekt um schnell einen Gegner zu finden! 🎯
+
+!quote
+→ Zufälliger Motivationsspruch wenn du einen
+   aufmunternden Push brauchst 💪
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🏅 MEILENSTEINE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Manfred gratuliert automatisch wenn ihr erreicht:
+
+🎮 Spiele:
+- 10 Spiele  → 🚀 Anfang einer Legende
+- 25 Spiele  → 🎯 Die Scheibe hat Respekt
+- 50 Spiele  → 💪 Nicht mehr aufzuhalten
+- 100 Spiele → 👑 Absolute Legende
+
+🏆 Siege:
+- 10 Siege  → 🥉 Bronze
+- 25 Siege  → 🥈 Silber
+- 50 Siege  → 🥇 Gold
+- 100 Siege → 👑 Unsterblich
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+❓ FRAGEN?
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Wendet euch an die Admins 🙂"""
+        await message.channel.send(hilfe_text)
+        return
+
     if content.lower().startswith("!quote"):
         if not (message.channel.id == LOG_CHANNEL_ID):
             return
