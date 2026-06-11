@@ -482,17 +482,16 @@ async def geburtstag_checker():
 
 
 async def midnight_auswertung():
-    """Läuft täglich um Mitternacht und postet Tagesauswertung."""
+    """Laeuft taeglich um Mitternacht DE-Zeit (22:00 UTC) und postet Tagesauswertung."""
     await client.wait_until_ready()
+    from datetime import timedelta
     while not client.is_closed():
-        now = datetime.now()
-        # Sekunden bis Mitternacht berechnen
-        seconds_until_midnight = (
-            (24 - now.hour - 1) * 3600 +
-            (60 - now.minute - 1) * 60 +
-            (60 - now.second)
-        )
-        await asyncio.sleep(seconds_until_midnight)
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        # Mitternacht DE = 22:00 UTC (UTC+2)
+        next_midnight = now.replace(hour=22, minute=0, second=0, microsecond=0)
+        if next_midnight <= now:
+            next_midnight += timedelta(days=1)
+        await asyncio.sleep((next_midnight - now).total_seconds())
 
         try:
             stats_channel = await client.fetch_channel(STATS_CHANNEL_ID)
@@ -659,6 +658,55 @@ async def on_message(message):
     # =========================
     # !h2h @Spieler1 @Spieler2
     # =========================
+    if content.lower().startswith("!rivalitaeten") or content.lower().startswith("!rivalitäten"):
+        if not is_stats_channel:
+            return
+
+        # Spieler aus Mention oder Name oder eigener Name
+        if message.mentions:
+            spieler = message.mentions[0].display_name
+        else:
+            parts = content.split(None, 1)
+            if len(parts) > 1 and not parts[1].startswith("@"):
+                spieler = parts[1].strip()
+            else:
+                spieler = message.author.display_name
+
+        try:
+            rows = sheet.get_all_values()
+            gegner_count = defaultdict(int)
+
+            for row in rows:
+                if len(row) < 7:
+                    continue
+                p1 = row[0].strip()
+                p2 = row[1].strip()
+                if p1.lower() == "spieler a":
+                    continue
+
+                if normalize(p1) == normalize(spieler):
+                    gegner_count[p2] += 1
+                elif normalize(p2) == normalize(spieler):
+                    gegner_count[p1] += 1
+
+            if not gegner_count:
+                await message.channel.send(f"❌ Keine Spiele fuer **{spieler}** gefunden.")
+                return
+
+            top5 = sorted(gegner_count.items(), key=lambda x: x[1], reverse=True)[:5]
+
+            msg = f"⚔️ **Top 5 Rivalitaeten von {spieler}:**\n\n"
+            medals = ["🥇", "🥈", "🥉", "4️⃣", "5️⃣"]
+            for i, (gegner, count) in enumerate(top5):
+                msg += f"{medals[i]} **{gegner}** - {count} Duelle\n"
+
+            await message.channel.send(msg)
+
+        except Exception as e:
+            print("❌ RIVALITAETEN ERROR:", e)
+            await message.channel.send(f"❌ Fehler: `{e}`")
+        return
+
     if content.lower().startswith("!h2h"):
         if not is_stats_channel:
             return
