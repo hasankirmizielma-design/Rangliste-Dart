@@ -1119,7 +1119,68 @@ async def on_message(message):
     # USER COMMANDS (nur in Spielabsprachen)
     # =========================
     if content.lower().startswith("!hilfe"):
-        if not (message.channel.id == SPIELER_INFO_CHANNEL_ID):
+        if not is_stats_channel and not (message.channel.id == SPIELER_INFO_CHANNEL_ID):
+            return
+
+        if is_stats_channel:
+            hilfe_admin = """🎯 MANFRED - ALLE KOMMANDOS
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+👥 USER KOMMANDOS (#rangliste-spieler-info)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+!ich / /ich             → Eigene Stats
+!ziel / /ziel           → Naechster Meilenstein & Rang
+!nächster / /naechster  → Wer hat heute noch Spiele uebrig
+!quote / /quote         → Motivationsspruch
+!hilfe / /hilfe         → Diese Uebersicht
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📊 STATISTIK (#statistik-fuer-admin)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+!stats @Spieler         → Stats eines Spielers
+!stats @Warteliste      → Stats aller Spieler
+!top / !rangliste       → Top 10 Rangliste
+!streak @Spieler        → Aktuelle Siegesserie
+!h2h Spieler1 Spieler2  → Direktvergleich
+!tabelle                → Tabelle als Bild
+!rivalitaeten           → Deine Top 5 Gegner
+!rivalitaeten @Spieler  → Top 5 Gegner eines Spielers
+!gesamt                 → Gesamtanzahl gespielte Spiele
+!los                    → 😈
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🔧 ADMIN (#bullseye-rangliste-ergebnisse)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+!add @Spieler +1/-1     → Tageslimit anpassen
+!undo                   → Letzten Eintrag loeschen
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+👥 SPIELER-VERWALTUNG
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+!rename AlterName Neu   → Spieler umbenennen
+!delete Spieler         → Spieler loeschen
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🔄 SAISON
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+!saisonreset            → Saisonreset ankuendigen
+!saisonreset confirm    → Saison archivieren & leeren
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📅 ABWESENHEIT & GEBURTSTAGE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+!urlaub 20.06 - 30.06  → Urlaub eintragen
+!urlaub loeschen        → Eigenen Urlaub loeschen
+!urlaube                → Urlaubs-Uebersicht
+!geburtstag 15.03       → Geburtstag eintragen
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🤖 AUTOMATISCH
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+07:00 / 14:00 / 18:00 / 22:00 → Tabelle
+00:00 → Tagesauswertung
+09:00 → Geburtstags-Glueckwunsch"""
+            await message.channel.send(hilfe_admin)
             return
         hilfe_text = """🎯 MANFRED – EUER DART-BOT 🎯
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
