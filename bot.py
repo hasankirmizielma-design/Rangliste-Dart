@@ -1,4 +1,5 @@
 import discord
+from discord import app_commands
 import re
 import os
 import json
@@ -110,6 +111,7 @@ intents = discord.Intents.default()
 intents.message_content = True
 intents.members = True
 client = discord.Client(intents=intents)
+tree = app_commands.CommandTree(client)
 
 # =========================
 # GOOGLE SHEETS
@@ -531,6 +533,27 @@ async def midnight_auswertung():
 @client.event
 async def on_ready():
     print(f"✅ Online als {client.user}")
+    await tree.sync()
+    print("✅ Slash Commands synchronisiert!")
+
+    # Counter aus heutigen Spielen wiederherstellen
+    try:
+        today_str = datetime.now().strftime("%d.%m.%Y")
+        rows = sheet.get_all_values()
+        for row in rows:
+            if len(row) < 8:
+                continue
+            p1 = row[0].strip()
+            p2 = row[1].strip()
+            datum = row[7].strip()
+            if not p1 or p1.lower() == "spieler a":
+                continue
+            if datum == today_str:
+                match_count[normalize(p1)] += 1
+                match_count[normalize(p2)] += 1
+        print(f"✅ Counter wiederhergestellt fuer heute ({today_str}): {dict(match_count)}")
+    except Exception as e:
+        print(f"❌ Counter-Restore Fehler: {e}")
 
     client.loop.create_task(midnight_auswertung())
     client.loop.create_task(tabelle_scheduler())
@@ -658,6 +681,61 @@ async def on_message(message):
     # =========================
     # !h2h @Spieler1 @Spieler2
     # =========================
+    if content.lower().startswith("!los"):
+        if not is_stats_channel:
+            return
+        los_sprueche = [
+            # Lanzi_90 (10)
+            "Lanzi_90 ist so schlecht, seine Pfeile haben einen Schutzantrag gestellt 😂",
+            "Lanzi_90 wirft Darts wie andere Leute einparken — ueberall ausser wo es hingehoert 🚗",
+            "Wenn Lanzi_90 wirft, verlaesst die Dartscheibe freiwillig die Wand 🏃",
+            "Lanzi_90s Trefferquote ist so niedrig, die wird mit einem Mikroskop gemessen 🔬",
+            "Lanzi_90 spielt seit Jahren und wird trotzdem von Anfaengern mitleidig angeschaut 😬",
+            "Lanzi_90 ist der einzige Mensch der beim Aufwaermen verliert 🤦",
+            "Die Wand hinter der Scheibe hat mehr Treffer als Lanzi_90s Statistik 🧱",
+            "Lanzi_90 denkt er spielt Dart — die Scheibe denkt er spielt Verstecken 🙈",
+            "Lanzi_90 hat den Rekord fuer die meisten Pfeile die nirgendwo ankamen 🌬️",
+            "Lanzi_90 und Talent beim Dart — eine Geschichte die noch nicht angefangen hat 📖",
+            # Allgemein (10)
+            "Irgendwer hier wirft Pfeile als ob er blind verbunden ist... und trotzdem besser als Lanzi_90 🎯",
+            "Diese Runde hat mehr Fehlwuerfe als ein blinder Oktopus mit Parkinson 🐙",
+            "Manche hier spielen Dart — andere werfen einfach Pfeile in die Gegend und hoffen 🙏",
+            "Der Durchschnitt in dieser Liga ist so niedrig, er braucht einen Aufzug nach oben 📉",
+            "Irgendwer hier sollte mal ernsthaft ueberlegen ob Darts das richtige Hobby ist... ihr wisst wer gemeint ist 😏",
+            "Diese Liga hat Spieler die so schlecht sind, die Scheibe hat Mitleid bekommen 🎯😢",
+            "Manche Wuerfe hier waren so schlecht, selbst der Bot hat kurz gezweifelt ob er richtig zaehlt 🤖",
+            "Hier spielen echte Kaempfer... und dann gibt es noch die anderen 💀",
+            "Der naechste der einen Pfeil in die Wand wirft kriegt eine persoenliche Beleidigung von mir 😤",
+            "Ich sage nichts, ich denke nur laut... mancher hier sollte Kegeln versuchen 🎳",
+            # Red_Apple17 Koeniglich (5)
+            "👑 Stille bitte. Red_Apple17 betritt den Raum. Alle anderen duerfen weiterspielen... wenn ihr euch traut.",
+            "🏆 Red_Apple17 — der einzige Grund warum diese Liga einen Sinn ergibt. Der Rest ist Dekoration.",
+            "✨ Waehrend andere ueben muss Red_Apple17 nur aufwachen um besser zu sein als ihr alle zusammen.",
+            "👑 Red_Apple17 ist nicht der beste Spieler dieser Liga. Er IST diese Liga. Der Rest spielt nur mit.",
+            "🌟 Manche werden Legenden — Red_Apple17 war schon immer eine. Ihr anderen habt noch Zeit aufzuholen... vielleicht.",
+            # Ueberraschungs-Twist (5)
+            "Ich wollte gerade jemanden beleidigen... aber ehrlich gesagt seid ihr alle ganz okay. Ausser Lanzi_90. 😇",
+            "Heute mal keine Beleidigung. Ihr habt es verdient. Nein warte — Lanzi_90 hat es nicht verdient 😂",
+            "Ich habe 30 Beleidigungen vorbereitet... und diese hier ist einfach: ihr seid alle Champions! Ausser du weisst schon wer 🏆",
+            "Ueberraschung — heute gibt es Lob! Ihr habt alle hart trainiert. Besonders Red_Apple17. Lanzi_90 hat trainiert zu verlieren 😂",
+            "Eigentlich wollte ich nett sein... aber dann habe ich Lanzi_90s Stats gesehen. Naechste Frage 💀",
+        ]
+        await message.channel.send(random.choice(los_sprueche))
+        return
+
+    if content.lower().startswith("!gesamt"):
+        if not is_stats_channel:
+            return
+        try:
+            rows = sheet.get_all_values()
+            # Header überspringen
+            spiele = [r for r in rows if len(r) >= 2 and r[0].lower() != "spieler a" and r[0].strip()]
+            total = len(spiele)
+            await message.channel.send(f"🎯 Bisher wurden insgesamt **{total} Spiele** gespielt!")
+        except Exception as e:
+            await message.channel.send(f"❌ Fehler: `{e}`")
+        return
+
     if content.lower().startswith("!rivalitaeten") or content.lower().startswith("!rivalitäten"):
         if not is_stats_channel:
             return
@@ -1158,7 +1236,7 @@ Wendet euch an die Admins 🙂"""
                 await message.channel.send(f"❌ Keine Daten fuer {spieler} gefunden.")
                 return
 
-            msg = f"🎯 **Naechste Meilensteine fuer {spieler}:**\n\n"
+            msg = f"🎯 **Naechste Ziele fuer {spieler}:**\n\n"
 
             # Spiele-Meilensteine
             naechstes_spiel_ziel = None
@@ -1181,6 +1259,28 @@ Wendet euch an die Admins 🙂"""
                 msg += f"🏆 Siege: noch **{naechstes_sieg_ziel - s['siege']}** bis zum {naechstes_sieg_ziel}-Siege-Meilenstein\n"
             else:
                 msg += f"🏆 Siege: Alle Meilensteine erreicht! 👑\n"
+
+            # Aktueller Rang + naechster Rang
+            tabelle = get_tabelle()
+            mein_rang = None
+            meine_punkte = 0
+            for i, p in enumerate(tabelle):
+                if normalize(p["name"]) == normalize(spieler):
+                    mein_rang = i + 1
+                    meine_punkte = p["punkte"]
+                    break
+
+            if mein_rang:
+                msg += f"\n📊 Aktueller Rang: **{mein_rang}**\n"
+                if mein_rang > 1:
+                    vorheriger = tabelle[mein_rang - 2]
+                    punkte_diff = vorheriger["punkte"] - meine_punkte
+                    if punkte_diff == 0:
+                        msg += f"🔝 Gleich viele Punkte wie **{vorheriger['name']}** (Rang {mein_rang-1}) - Leg-Differenz entscheidet!\n"
+                    else:
+                        msg += f"🔝 Noch **{punkte_diff} Punkte** bis Rang {mein_rang - 1} (**{vorheriger['name']}**)\n"
+                else:
+                    msg += f"👑 Du bist Tabellenführer!\n"
 
             await message.channel.send(msg)
         except Exception as e:
@@ -1485,14 +1585,11 @@ Wendet euch an die Admins 🙂"""
     # GOOGLE SHEETS
     # =========================
     try:
-        sheet.append_row([
-            winner,
-            loser,
-            w_score,
-            l_score,
-            p1,
-            p2
-        ])
+        new_row_data = [winner, loser, w_score, l_score, p1, p2]
+        sheet.append_row(new_row_data)
+        # Datum in Spalte H eintragen (Spalte G = Formel bleibt unangetastet)
+        last_row = len(sheet.get_all_values())
+        sheet.update_cell(last_row, 8, datetime.now().strftime("%d.%m.%Y"))
     except Exception as e:
         print("❌ SHEETS ERROR:", e)
         await message.channel.send("❌ Fehler beim Speichern!")
@@ -1564,6 +1661,159 @@ Wendet euch an die Admins 🙂"""
         print("❌ SPIELABSPRACHEN ERROR:", e)
 
 # =========================
+# SLASH COMMANDS
+# =========================
+@tree.command(name="ich", description="Zeigt deine persoenlichen Stats")
+async def slash_ich(interaction: discord.Interaction):
+    spieler = interaction.user.display_name
+    try:
+        stats = get_stats_from_sheet()
+        s = None
+        for k, v in stats.items():
+            if normalize(k) == normalize(spieler):
+                s = v
+                break
+        if not s or s["spiele"] == 0:
+            await interaction.response.send_message(f"Keine Daten fuer {spieler} gefunden.", ephemeral=True)
+            return
+        winrate = round(s["siege"] / s["spiele"] * 100, 1)
+        msg = f"📊 **Deine Stats, {spieler}**\n🎮 Spiele: {s['spiele']} | 🏆 Siege: {s['siege']} | 💀 Niederlagen: {s['niederlagen']} | 📈 Win-Rate: {winrate}%"
+        await interaction.response.send_message(msg)
+    except Exception as e:
+        await interaction.response.send_message(f"Fehler: {e}", ephemeral=True)
+
+
+@tree.command(name="ziel", description="Zeigt deinen naechsten Meilenstein und Rang")
+async def slash_ziel(interaction: discord.Interaction):
+    spieler = interaction.user.display_name
+    try:
+        stats = get_stats_from_sheet()
+        s = None
+        for k, v in stats.items():
+            if normalize(k) == normalize(spieler):
+                s = v
+                break
+        if not s or s["spiele"] == 0:
+            await interaction.response.send_message(f"Keine Daten fuer {spieler} gefunden.", ephemeral=True)
+            return
+
+        msg = f"🎯 **Naechste Ziele fuer {spieler}:**\n\n"
+
+        naechstes_spiel_ziel = None
+        for m in sorted(SPIELE_MEILENSTEINE.keys()):
+            if s["spiele"] < m:
+                naechstes_spiel_ziel = m
+                break
+        if naechstes_spiel_ziel:
+            msg += f"🎮 Spiele: noch **{naechstes_spiel_ziel - s['spiele']}** bis zum {naechstes_spiel_ziel}-Spiele-Meilenstein\n"
+        else:
+            msg += f"🎮 Spiele: Alle Meilensteine erreicht! 👑\n"
+
+        naechstes_sieg_ziel = None
+        for m in sorted(SIEGE_MEILENSTEINE.keys()):
+            if s["siege"] < m:
+                naechstes_sieg_ziel = m
+                break
+        if naechstes_sieg_ziel:
+            msg += f"🏆 Siege: noch **{naechstes_sieg_ziel - s['siege']}** bis zum {naechstes_sieg_ziel}-Siege-Meilenstein\n"
+        else:
+            msg += f"🏆 Siege: Alle Meilensteine erreicht! 👑\n"
+
+        tabelle = get_tabelle()
+        mein_rang = None
+        meine_punkte = 0
+        for i, p in enumerate(tabelle):
+            if normalize(p["name"]) == normalize(spieler):
+                mein_rang = i + 1
+                meine_punkte = p["punkte"]
+                break
+
+        if mein_rang:
+            msg += f"\n📊 Aktueller Rang: **{mein_rang}**\n"
+            if mein_rang > 1:
+                vorheriger = tabelle[mein_rang - 2]
+                punkte_diff = vorheriger["punkte"] - meine_punkte
+                if punkte_diff == 0:
+                    msg += f"🔝 Gleich viele Punkte wie **{vorheriger['name']}** (Rang {mein_rang-1}) - Leg-Differenz entscheidet!\n"
+                else:
+                    msg += f"🔝 Noch **{punkte_diff} Punkte** bis Rang {mein_rang - 1} (**{vorheriger['name']}**)\n"
+            else:
+                msg += f"👑 Du bist Tabellenfuehrer!\n"
+
+        await interaction.response.send_message(msg)
+    except Exception as e:
+        await interaction.response.send_message(f"Fehler: {e}", ephemeral=True)
+
+
+@tree.command(name="naechster", description="Zeigt wer heute noch Spiele uebrig hat")
+async def slash_naechster(interaction: discord.Interaction):
+    try:
+        verfuegbar = []
+        for player, count in match_count.items():
+            if count < MAX_MATCHES_PER_DAY and normalize(player) != normalize(interaction.user.display_name):
+                verfuegbar.append(f"• {player} ({MAX_MATCHES_PER_DAY - count} Spiele uebrig)")
+        if not verfuegbar:
+            await interaction.response.send_message("😴 Heute hat niemand mehr Spiele uebrig!")
+        else:
+            msg = "🎯 **Verfuegbare Gegner heute:**\n" + "\n".join(verfuegbar)
+            await interaction.response.send_message(msg)
+    except Exception as e:
+        await interaction.response.send_message(f"Fehler: {e}", ephemeral=True)
+
+
+@tree.command(name="quote", description="Zufaelliger Motivationsspruch")
+async def slash_quote(interaction: discord.Interaction):
+    quotes = [
+        "🎯 Ein schlechter Tag am Dartboard ist besser als ein guter Tag ohne Dart!",
+        "🎯 Uebung macht den Meister — wirf einfach weiter!",
+        "🎯 Jeder Profi war mal ein Anfaenger. Heute koennte dein Tag sein!",
+        "🎯 Dart ist 10% Talent und 90% nicht aufhoeren zu ueben!",
+        "🎯 Die Scheibe wartet auf dich. Sie hat Angst. 😏",
+        "🎯 Niederlagen sind Lektionen. Siege sind Belohnungen. Beides macht dich besser!",
+        "🎯 Ein Pfeil kann alles veraendern. Wirf ihn!",
+        "🎯 Champions werden nicht geboren — sie werden geworfen! 💪",
+        "🎯 Glaub an deinen Arm, auch wenn die Scheibe das noch nicht tut!",
+        "🎯 Heute verloren? Morgen gewonnen. So laeuft das hier!",
+    ]
+    await interaction.response.send_message(random.choice(quotes))
+
+
+@tree.command(name="hilfe", description="Zeigt alle verfuegbaren Befehle")
+async def slash_hilfe(interaction: discord.Interaction):
+    hilfe_text = """🎯 MANFRED - EUER DART-BOT 🎯
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📋 ERGEBNIS EINTRAGEN
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Schreibt einfach so:
+@Spieler1 vs @Spieler2 3:1
+
+⚠️ WICHTIG:
+- Beide Spieler MÜSSEN mit @ markiert werden
+- Jeder hat nur 5 Spiele pro Tag
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🤖 BEFEHLE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+/ich       → Deine persoenlichen Stats
+/ziel      → Naechster Meilenstein & Rang
+/naechster → Wer hat heute noch Spiele uebrig?
+/quote     → Motivationsspruch 💪
+/hilfe     → Diese Uebersicht"""
+    await interaction.response.send_message(hilfe_text, ephemeral=True)
+
+
+# =========================
 # RUN
 # =========================
+async def main():
+    async with client:
+        await client.start(TOKEN)
+
+import asyncio
+
+@client.event
+async def on_ready_extra():
+    await tree.sync()
+    print("✅ Slash Commands synchronisiert!")
+
 client.run(TOKEN)
