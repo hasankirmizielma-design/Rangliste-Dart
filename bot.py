@@ -26,6 +26,7 @@ GEBURTSTAGE_CHANNEL_ID = 1514226619231899708
 CHANNEL_NAME = "bullseye-rangliste-ergebnisse"
 MAX_MATCHES_PER_DAY = 5
 LANZI_NAME = "lanzi_90"
+WARTELISTE_ROLE_ID = 1492563010395312301
 
 # 🔐 ADMIN ROLE ID
 ADMIN_ROLE_IDS = [1463106884595880031]
@@ -729,8 +730,6 @@ async def on_message(message):
     if content.lower().startswith("!stats"):
         if not is_stats_channel:
             return
-
-        WARTELISTE_ROLE_ID = 1492563010395312301
 
         # Rollen-Stats: !stats @Warteliste
         is_role_stats = (message.role_mentions and any(r.id == WARTELISTE_ROLE_ID for r in message.role_mentions)) or str(WARTELISTE_ROLE_ID) in content or "warteliste" in content.lower()
