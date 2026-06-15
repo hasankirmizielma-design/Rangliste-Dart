@@ -620,6 +620,30 @@ async def warteliste_scheduler():
             print(f"❌ WARTELISTE SCHEDULER ERROR: {e}")
 
 
+def get_monthly_count(p1, p2):
+    """Zaehlt wie oft p1 und p2 diesen Monat gegeneinander gespielt haben."""
+    rows = sheet.get_all_values()
+    current_month = datetime.now().strftime("%m.%Y")
+    count = 0
+    for row in rows:
+        if len(row) < 8:
+            continue
+        ra = row[0].strip()
+        rb = row[1].strip()
+        datum = row[7].strip()
+        if not datum:
+            continue
+        try:
+            d = datetime.strptime(datum, "%d.%m.%Y")
+            if d.strftime("%m.%Y") != current_month:
+                continue
+        except:
+            continue
+        if (normalize(ra) == normalize(p1) and normalize(rb) == normalize(p2)) or            (normalize(ra) == normalize(p2) and normalize(rb) == normalize(p1)):
+            count += 1
+    return count
+
+
 async def midnight_auswertung():
     """Laeuft taeglich um Mitternacht DE-Zeit (22:00 UTC) und postet Tagesauswertung."""
     await client.wait_until_ready()
@@ -1735,6 +1759,23 @@ Wendet euch an die Admins 🙂"""
         l_score = s2
 
     # =========================
+    # MONATSLIMIT CHECK (max 15 gegen denselben)
+    # =========================
+    monthly_count = get_monthly_count(p1, p2)
+    MAX_MONTHLY = 15
+
+    if monthly_count >= MAX_MONTHLY:
+        await message.channel.send(
+            f"❌ **Monatslimit erreicht!** {p1} und {p2} haben bereits {MAX_MONTHLY}x diesen Monat gespielt. Sucht euch andere Gegner! 😄"
+        )
+        return
+
+    if monthly_count == MAX_MONTHLY - 2:
+        await message.channel.send(f"⚠️ Noch 2 Spiele diesen Monat zwischen **{p1}** und **{p2}**!")
+    elif monthly_count == MAX_MONTHLY - 1:
+        await message.channel.send(f"⚠️ Letztes Spiel diesen Monat zwischen **{p1}** und **{p2}**!")
+
+    # =========================
     # LIMIT CHECK
     # =========================
     if winner != "Unentschieden":
@@ -1784,7 +1825,7 @@ Wendet euch an die Admins 🙂"""
     # MAIN RESPONSE
     # =========================
     if winner == "Unentschieden":
-        await message.channel.send(random.choice(UNENTSCHIEDEN_SPRUECHE))
+        await message.channel.send(f"🤝 Unentschieden {w_score}:{l_score}")
     else:
         await message.channel.send(
             f"🏆 Sieger: {winner} ({w_score}:{l_score})\n"
@@ -1804,13 +1845,6 @@ Wendet euch an die Admins 🙂"""
     # =========================
     try:
         spielabsprachen = await client.fetch_channel(LOG_CHANNEL_ID)
-
-        # 🔥 DOMINANZ-SPRUCH
-        if winner != "Unentschieden":
-            score_diff = w_score - l_score
-            spruch = get_dominanz_spruch(winner, score_diff)
-            if spruch:
-                await spielabsprachen.send(spruch)
 
         # 📊 RESTSPIELE
         msg = "📊 Match Update:\n"
