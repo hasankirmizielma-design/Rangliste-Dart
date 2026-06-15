@@ -624,7 +624,7 @@ async def on_message(message):
 
                     if not s or s["spiele"] == 0:
                         await message.channel.send(f"➖ **{player}** — Noch keine Spiele im Sheet.")
-                    else:
+                    elif s["spiele"] < 10:
                         winrate = round(s["siege"] / s["spiele"] * 100, 1)
                         msg = (
                             f"📊 **{player}**\n"
