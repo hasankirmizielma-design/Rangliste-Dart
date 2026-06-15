@@ -483,6 +483,142 @@ async def geburtstag_checker():
         await asyncio.sleep(60)
 
 
+async def post_warteliste_bericht(channel):
+    """Erstellt den Aktivitaetsbericht fuer alle Warteliste-Spieler."""
+    from datetime import timedelta
+
+    rows = sheet.get_all_values()
+    stats = get_stats_from_sheet()
+
+    # Erstes Spieldatum pro Spieler aus Spalte H
+    first_date = {}
+    for row in rows:
+        if len(row) < 8:
+            continue
+        p1 = row[0].strip()
+        p2 = row[1].strip()
+        datum = row[7].strip()
+        if not datum or p1.lower() == "spieler a":
+            continue
+        try:
+            d = datetime.strptime(datum, "%d.%m.%Y")
+            if p1 not in first_date or d < first_date[p1]:
+                first_date[p1] = d
+            if p2 not in first_date or d < first_date[p2]:
+                first_date[p2] = d
+        except:
+            continue
+
+    # Warteliste-Mitglieder holen
+    guild = None
+    for g in client.guilds:
+        guild = g
+        break
+    if not guild:
+        await channel.send("❌ Server nicht gefunden.")
+        return
+
+    role = guild.get_role(WARTELISTE_ROLE_ID)
+    if not role:
+        await channel.send("❌ Warteliste-Rolle nicht gefunden.")
+        return
+
+    members = role.members
+    today = datetime.now()
+    today_str = today.strftime("%d.%m.%Y")
+
+    gruppen = {
+        "0-5": [],
+        "5-10": [],
+        "10-15": [],
+        "15+": [],
+        "kein_spiel": []
+    }
+
+    for member in members:
+        player = member.display_name
+        s = None
+        for k, v in stats.items():
+            if normalize(k) == normalize(player):
+                s = v
+                break
+
+        if not s or s["spiele"] == 0:
+            gruppen["kein_spiel"].append(player)
+            continue
+
+        spiele = s["spiele"]
+        siege = s["siege"]
+        niederlagen = s["niederlagen"]
+        winrate = round(siege / spiele * 100, 1) if spiele > 0 else 0
+        seit = first_date.get(player)
+        seit_str = seit.strftime("%d.%m.%Y") if seit else "?"
+
+        eintrag = f"• **{player}** (seit {seit_str}) — {spiele} Sp | {siege}S / {niederlagen}N | {winrate}% WR"
+
+        if spiele < 5:
+            gruppen["0-5"].append(eintrag)
+        elif spiele < 10:
+            gruppen["5-10"].append(eintrag)
+        elif spiele < 15:
+            gruppen["10-15"].append(eintrag)
+        else:
+            gruppen["15+"].append(eintrag)
+
+    msg = f"📊 **Warteliste Aktivitaetsbericht** ({today_str})\n"
+    msg += "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+
+    if gruppen["15+"]:
+        msg += f"🟢 **15+ Spiele:**\n" + "\n".join(gruppen["15+"]) + "\n\n"
+    if gruppen["10-15"]:
+        msg += f"🟡 **10-15 Spiele:**\n" + "\n".join(gruppen["10-15"]) + "\n\n"
+    if gruppen["5-10"]:
+        msg += f"🟠 **5-10 Spiele:**\n" + "\n".join(gruppen["5-10"]) + "\n\n"
+    if gruppen["0-5"]:
+        msg += f"🔴 **0-5 Spiele:**\n" + "\n".join(gruppen["0-5"]) + "\n\n"
+    if gruppen["kein_spiel"]:
+        msg += f"⚫ **Noch kein Spiel:**\n" + "\n".join([f"• {p}" for p in gruppen["kein_spiel"]])
+
+    # Nachricht aufteilen falls zu lang
+    if len(msg) > 1900:
+        parts = msg.split("\n\n")
+        chunk = ""
+        for part in parts:
+            if len(chunk) + len(part) > 1900:
+                await channel.send(chunk)
+                chunk = part + "\n\n"
+            else:
+                chunk += part + "\n\n"
+        if chunk:
+            await channel.send(chunk)
+    else:
+        await channel.send(msg)
+
+
+async def warteliste_scheduler():
+    """Postet Warteliste-Bericht um 10:00 und 19:00 Uhr DE-Zeit."""
+    await client.wait_until_ready()
+    from datetime import timedelta
+    # DE = UTC+2 → 10:00 DE = 08:00 UTC, 19:00 DE = 17:00 UTC
+    post_times_utc = [(8, 0), (17, 0)]
+    while not client.is_closed():
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        next_post = None
+        for hour, minute in sorted(post_times_utc):
+            candidate = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+            if candidate > now:
+                next_post = candidate
+                break
+        if next_post is None:
+            next_post = (now + timedelta(days=1)).replace(hour=8, minute=0, second=0, microsecond=0)
+        await asyncio.sleep((next_post - now).total_seconds())
+        try:
+            channel = await client.fetch_channel(STATS_CHANNEL_ID)
+            await post_warteliste_bericht(channel)
+        except Exception as e:
+            print(f"❌ WARTELISTE SCHEDULER ERROR: {e}")
+
+
 async def midnight_auswertung():
     """Laeuft taeglich um Mitternacht DE-Zeit (22:00 UTC) und postet Tagesauswertung."""
     await client.wait_until_ready()
@@ -558,6 +694,7 @@ async def on_ready():
     client.loop.create_task(midnight_auswertung())
     client.loop.create_task(tabelle_scheduler())
     client.loop.create_task(geburtstag_checker())
+    client.loop.create_task(warteliste_scheduler())
 
 
 # =========================
@@ -599,42 +736,10 @@ async def on_message(message):
         is_role_stats = (message.role_mentions and any(r.id == WARTELISTE_ROLE_ID for r in message.role_mentions)) or str(WARTELISTE_ROLE_ID) in content or "warteliste" in content.lower()
         if is_role_stats:
             try:
-                stats = get_stats_from_sheet()
-                guild = message.guild
-                role = guild.get_role(WARTELISTE_ROLE_ID)
-                if not role:
-                    await message.channel.send("❌ Rolle nicht gefunden.")
-                    return
-
-                members_with_role = [m for m in role.members]
-                if not members_with_role:
-                    await message.channel.send("❌ Keine Mitglieder mit dieser Rolle.")
-                    return
-
-                await message.channel.send(f"📊 **Stats für alle Spieler mit Rolle {role.name}:**")
-
-                for member in members_with_role:
-                    player = member.display_name
-                    s = stats.get(player)
-                    if not s:
-                        for k, v in stats.items():
-                            if normalize(k) == normalize(player):
-                                s = v
-                                break
-
-                    if not s or s["spiele"] == 0:
-                        await message.channel.send(f"➖ **{player}** — Noch keine Spiele im Sheet.")
-                    elif s["spiele"] < 10:
-                        winrate = round(s["siege"] / s["spiele"] * 100, 1)
-                        msg = (
-                            f"📊 **{player}**\n"
-                            f"🎮 Spiele: {s['spiele']} | 🏆 Siege: {s['siege']} | 💀 Niederlagen: {s['niederlagen']} | 📈 Win-Rate: {winrate}%"
-                        )
-                        await message.channel.send(msg)
-
+                await post_warteliste_bericht(message.channel)
             except Exception as e:
                 print("❌ STATS ROLLE ERROR:", e)
-                await message.channel.send("❌ Fehler beim Laden der Rollen-Stats.")
+                await message.channel.send(f"❌ Fehler: `{e}`")
             return
 
         # Einzelspieler-Stats
