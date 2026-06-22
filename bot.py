@@ -444,8 +444,8 @@ async def geburtstag_checker():
     from datetime import timedelta
     while not client.is_closed():
         now = datetime.now(timezone.utc).replace(tzinfo=None)
-        # 09:00 Uhr DE = 07:00 UTC
-        next_check = now.replace(hour=7, minute=0, second=0, microsecond=0)
+        # 07:00 Uhr DE = 05:00 UTC
+        next_check = now.replace(hour=5, minute=0, second=0, microsecond=0)
         if next_check <= now:
             next_check += timedelta(days=1)
         await asyncio.sleep((next_check - now).total_seconds())
