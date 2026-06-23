@@ -1817,7 +1817,8 @@ Wendet euch an die Admins 🙂"""
     try:
         spielabsprachen = await client.fetch_channel(LOG_CHANNEL_ID)
         for player in [p1, p2]:
-            await check_meilensteine(player, spielabsprachen)
+            is_winner = winner != "Unentschieden" and normalize(player) == normalize(winner)
+            await check_meilensteine(player, spielabsprachen, check_siege=is_winner)
     except Exception as e:
         print("❌ MEILENSTEIN FETCH ERROR:", e)
 
