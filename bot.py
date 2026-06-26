@@ -61,6 +61,11 @@ def get_dominanz_spruch(winner, score_diff):
     return None
 
 # =========================
+# TABELLE MESSAGE ID
+# =========================
+last_tabelle_message_id = None
+
+# =========================
 # MEILENSTEINE
 # =========================
 SPIELE_MEILENSTEINE = {
@@ -397,15 +402,26 @@ def generate_tabelle_image(tabelle, title):
 
 
 async def post_tabelle():
-    """Postet die Tabelle in den Tabellen-Channel."""
+    """Postet die Tabelle in den Tabellen-Channel und loescht die vorherige."""
+    global last_tabelle_message_id
     try:
         tabelle = get_tabelle()
         if not tabelle:
             return
         channel = await client.fetch_channel(TABELLE_CHANNEL_ID)
+
+        # Alte Tabelle loeschen
+        if last_tabelle_message_id:
+            try:
+                old_msg = await channel.fetch_message(last_tabelle_message_id)
+                await old_msg.delete()
+            except:
+                pass
+
         title = f"Aktuelle Tabelle  {datetime.now().strftime('%d.%m.%Y %H:%M')} Uhr"
         img_buf = generate_tabelle_image(tabelle, title)
-        await channel.send(file=discord.File(img_buf, filename="tabelle.png"))
+        new_msg = await channel.send(file=discord.File(img_buf, filename="tabelle.png"))
+        last_tabelle_message_id = new_msg.id
     except Exception as e:
         print("❌ TABELLE ERROR:", e)
 
@@ -1503,7 +1519,7 @@ Wendet euch an die Admins 🙂"""
 
         spieler = message.author.display_name
 
-        # Löschen
+        # Loeschen
         if "löschen" in content.lower() or "loeschen" in content.lower():
             try:
                 wb = gs_client.open_by_key("19Ax_hj9exjwfM6NPyw9JBL2ad3qW1_LOkMHddJ6stlc")
@@ -1514,16 +1530,45 @@ Wendet euch an die Admins 🙂"""
                     return
 
                 rows = urlaub_sheet.get_all_values()
-                deleted = 0
-                for i, row in enumerate(reversed(rows)):
+                meine_urlaube = []
+                for i, row in enumerate(rows):
                     if len(row) >= 1 and normalize(row[0]) == normalize(spieler):
-                        urlaub_sheet.delete_rows(len(rows) - i)
-                        deleted += 1
+                        meine_urlaube.append((i + 1, row))  # 1-basierter Index
 
-                if deleted:
-                    await message.channel.send(f"✅ Urlaub von **{spieler}** wurde gelöscht.")
-                else:
+                if not meine_urlaube:
                     await message.channel.send(f"❌ Kein Urlaub von **{spieler}** gefunden.")
+                    return
+
+                # Nummer aus Command lesen z.B. !urlaub löschen 2
+                parts = content.split()
+                nummer = None
+                for p in parts:
+                    if p.isdigit() and 1 <= int(p) <= 5:
+                        nummer = int(p)
+                        break
+
+                if len(meine_urlaube) == 1:
+                    # Nur einer — direkt loeschen
+                    urlaub_sheet.delete_rows(meine_urlaube[0][0])
+                    await message.channel.send(f"✅ Urlaub von **{spieler}** wurde gelöscht.")
+                elif nummer:
+                    # Nummer angegeben
+                    if nummer > len(meine_urlaube):
+                        await message.channel.send(f"❌ Du hast nur {len(meine_urlaube)} Urlaube.")
+                        return
+                    row_idx = meine_urlaube[nummer - 1][0]
+                    row_data = meine_urlaube[nummer - 1][1]
+                    urlaub_sheet.delete_rows(row_idx)
+                    await message.channel.send(f"✅ Urlaub **{row_data[1]} - {row_data[2]}** wurde gelöscht.")
+                else:
+                    # Mehrere aber keine Nummer — Liste anzeigen
+                    msg = f"Du hast {len(meine_urlaube)} Urlaube. Welchen möchtest du löschen?\n\n"
+                    emojis = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣"]
+                    for i, (_, row) in enumerate(meine_urlaube[:5]):
+                        msg += f"{emojis[i]} {row[1]} - {row[2]}\n"
+                    msg += f"\nAntworte mit `!urlaub löschen 1` bis `!urlaub löschen {min(len(meine_urlaube), 5)}`"
+                    await message.channel.send(msg)
+
             except Exception as e:
                 await message.channel.send(f"❌ Fehler: `{e}`")
             return
