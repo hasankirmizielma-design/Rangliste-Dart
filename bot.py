@@ -707,11 +707,19 @@ async def midnight_auswertung():
 # =========================
 # BOT READY
 # =========================
+_tasks_started = False
+
 @client.event
 async def on_ready():
+    global _tasks_started
     print(f"✅ Online als {client.user}")
     await tree.sync()
     print("✅ Slash Commands synchronisiert!")
+
+    if _tasks_started:
+        print("⚠️ on_ready erneut ausgeloest (Reconnect) - Tasks werden NICHT erneut gestartet.")
+        return
+    _tasks_started = True
 
     # Counter aus heutigen Spielen wiederherstellen
     try:
@@ -1121,15 +1129,18 @@ async def on_message(message):
         try:
             rows = sheet.get_all_values()
             count = 0
+            # NUR Spalten A, B, E, F duerfen geaendert werden - NIEMALS G (Formel!)
+            safe_columns = [0, 1, 4, 5]  # A, B, E, F (0-indexiert)
+            col_letters = {0: "A", 1: "B", 4: "E", 5: "F"}
+
             for i, row in enumerate(rows):
                 updated = False
-                new_row = list(row)
-                for j, cell in enumerate(new_row):
-                    if normalize(cell) == normalize(alter_name):
-                        new_row[j] = neuer_name
+                for j in safe_columns:
+                    if j < len(row) and normalize(row[j]) == normalize(alter_name):
+                        cell_ref = f"{col_letters[j]}{i+1}"
+                        sheet.update(cell_ref, [[neuer_name]])
                         updated = True
                 if updated:
-                    sheet.update(f"A{i+1}", [new_row])
                     count += 1
 
             if count == 0:
